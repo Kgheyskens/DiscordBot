@@ -1,4 +1,18 @@
 require('dotenv').config(); //This will be used to store private keys
+
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Dit zorgt ervoor dat de URL (https://onrender.com) iets terugstuurt
+app.get('/', (req, res) => {
+  res.send('Bot is succesvol aan het draaien!');
+});
+
+app.listen(port, () => {
+  console.log(`Webserver luistert op poort ${port}`);
+});
+
 const path = require('path');
 const fs = require('fs');
 const deployCommands = require('./deploy/deployCommands');
