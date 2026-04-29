@@ -1,0 +1,15 @@
+{
+  "1407468154258587700": {
+    "1407468156796145666": {
+      "game": "wordle",
+      "answer": "vrouw",
+      "guesses": [],
+      "maxGuesses": 6,
+      "starterId": "1192487598342541459",
+      "starterTag": "_the.one.piece_",
+      "channelId": "1407468156796145666",
+      "startedAt": 1777492785393,
+      "finished": false
+    }
+  }
+}

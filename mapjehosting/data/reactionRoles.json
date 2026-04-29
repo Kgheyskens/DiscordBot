@@ -1,0 +1,16 @@
+{
+  "1499060030778118235": {
+    "guildId": "1407468154258587700",
+    "channelId": "1407468156796145666",
+    "messageId": "1499060030778118235",
+    "title": "roles",
+    "description": "pak je rollen hier",
+    "roles": [
+      {
+        "emoji": "😍",
+        "roleId": "1499045416212365342",
+        "label": "ursocool"
+      }
+    ]
+  }
+}
