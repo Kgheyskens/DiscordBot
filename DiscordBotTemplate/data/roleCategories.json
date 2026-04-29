@@ -1,0 +1,29 @@
+{
+  "1407468154258587700": [
+    {
+      "id": "cmokd8a5myq6",
+      "name": "Geslacht",
+      "description": "Hier kan je kiezen wat je bent",
+      "exclusive": true,
+      "roleIds": [
+        "1499109740406509588",
+        "1499109678851035188",
+        "1499109714510876713"
+      ],
+      "channelId": "1499109211282346124",
+      "messageId": "1499109838863466578"
+    },
+    {
+      "id": "cmokh8rupo8e",
+      "name": "Games",
+      "description": "hier kan je je games kiezen",
+      "exclusive": true,
+      "roleIds": [
+        "1499109740406509588",
+        "1499045416212365342"
+      ],
+      "channelId": "1499109211282346124",
+      "messageId": "1499137849549656135"
+    }
+  ]
+}

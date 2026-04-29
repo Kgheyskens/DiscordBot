@@ -1,0 +1,11 @@
+{
+	"watch": ["app.js", "commands", "lib", "deploy", "events"],
+	"ext": "js,json",
+	"ignore": [
+		"data/**",
+		"node_modules/**",
+		"*.log",
+		".git/**"
+	],
+	"delay": "500"
+}
