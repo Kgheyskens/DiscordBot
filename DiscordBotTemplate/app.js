@@ -43,6 +43,7 @@ const { migrateGuildConfigs } = require('./lib/migrateConfigs');
 const setupWizard = require('./lib/setupWizard');
 const roleCategoryService = require('./lib/roleCategoryService');
 const minigameService = require('./lib/minigameService');
+const menuCommand = require('./commands/menu/menu');
 const { isEconomyEnabled } = require('./lib/economyService');
 const {
 	drawCard,
@@ -255,8 +256,9 @@ async function handleCountingMessage(message) {
 		const reason = isWrongUser
 			? 'mocht niet 2 keer na elkaar tellen'
 			: `typte **${guessedNumber}** in plaats van **${nextNumber}**`;
+		const saveCost = settings.counting?.saveCost ?? 50;
 		await message.channel.send({
-			content: `❌ <@${message.author.id}> heeft het verpest (${reason}). Het volgende getal is **1**.\nTip: koop saves in de shop met \`/crownshop buysave\` zodat een fout automatisch opgevangen wordt.`,
+			content: `❌ <@${message.author.id}> heeft het verpest (${reason}). Het volgende getal is **1**.\nTip: koop saves voor ${saveCost} kroontjes met \`/crownshop buysave\` zodat een fout automatisch opgevangen wordt.`,
 		}).catch(() => null);
 		return true;
 	}
@@ -272,14 +274,28 @@ async function handleCountingMessage(message) {
 	return true;
 }
 
+async function editOrSendMinigame(message, state, builder, finalContent = null) {
+	if (state.messageId) {
+		const target = await message.channel.messages.fetch(state.messageId).catch(() => null);
+		if (target) {
+			await target.edit({ embeds: [builder(state)] }).catch(() => null);
+			if (finalContent) {
+				await message.channel.send({ content: finalContent }).catch(() => null);
+			}
+			await message.delete().catch(() => null);
+			return;
+		}
+	}
+	await message.channel.send({ embeds: [builder(state)], content: finalContent || undefined }).catch(() => null);
+}
+
 async function handleMinigameMessage(message) {
 	const state = minigameService.getActiveGame(message.guild.id, message.channel.id);
 	if (!state || state.finished) return false;
 	if (state.game !== 'wordle' && state.game !== 'hangman') return false;
 
 	const text = message.content.trim().toLowerCase();
-	if (!text || /^\s*$/.test(text)) return false;
-	if (!/^[a-z]+$/.test(text)) return false;
+	if (!text || !/^[a-z]+$/.test(text)) return false;
 
 	if (state.game === 'wordle') {
 		if (text.length !== state.answer.length) return false;
@@ -291,10 +307,8 @@ async function handleMinigameMessage(message) {
 			state.won = true;
 			const reward = await minigameService.awardWin(message.guild.id, message.author.id, 'wordle');
 			minigameService.setActiveGame(message.guild.id, message.channel.id, null);
-			await message.channel.send({
-				embeds: [minigameService.buildWordleEmbed(state)],
-				content: reward > 0 ? `🎉 <@${message.author.id}> wint en krijgt **${reward}** kroontjes!` : `🎉 <@${message.author.id}> wint!`,
-			}).catch(() => null);
+			await editOrSendMinigame(message, state, minigameService.buildWordleEmbed,
+				reward > 0 ? `🎉 <@${message.author.id}> wint en krijgt **${reward}** kroontjes!` : `🎉 <@${message.author.id}> wint!`);
 			return true;
 		}
 		if (state.guesses.length >= state.maxGuesses) {
@@ -304,20 +318,15 @@ async function handleMinigameMessage(message) {
 		} else {
 			minigameService.setActiveGame(message.guild.id, message.channel.id, state);
 		}
-		await message.channel.send({ embeds: [minigameService.buildWordleEmbed(state)] }).catch(() => null);
+		await editOrSendMinigame(message, state, minigameService.buildWordleEmbed);
 		return true;
 	}
 
 	if (state.game === 'hangman') {
 		if (text.length === 1) {
-			if (state.guessed.includes(text) || state.wrong.includes(text)) {
-				return false;
-			}
-			if (state.answer.includes(text)) {
-				state.guessed.push(text);
-			} else {
-				state.wrong.push(text);
-			}
+			if (state.guessed.includes(text) || state.wrong.includes(text)) return false;
+			if (state.answer.includes(text)) state.guessed.push(text);
+			else state.wrong.push(text);
 		} else if (text.length === state.answer.length) {
 			if (text === state.answer) {
 				state.guessed = [...new Set(state.answer.split(''))];
@@ -335,10 +344,8 @@ async function handleMinigameMessage(message) {
 			state.won = true;
 			const reward = await minigameService.awardWin(message.guild.id, message.author.id, 'hangman');
 			minigameService.setActiveGame(message.guild.id, message.channel.id, null);
-			await message.channel.send({
-				embeds: [minigameService.buildHangmanEmbed(state)],
-				content: reward > 0 ? `🎉 <@${message.author.id}> wint en krijgt **${reward}** kroontjes!` : `🎉 <@${message.author.id}> wint!`,
-			}).catch(() => null);
+			await editOrSendMinigame(message, state, minigameService.buildHangmanEmbed,
+				reward > 0 ? `🎉 <@${message.author.id}> wint en krijgt **${reward}** kroontjes!` : `🎉 <@${message.author.id}> wint!`);
 			return true;
 		}
 		if (dead) {
@@ -348,7 +355,7 @@ async function handleMinigameMessage(message) {
 		} else {
 			minigameService.setActiveGame(message.guild.id, message.channel.id, state);
 		}
-		await message.channel.send({ embeds: [minigameService.buildHangmanEmbed(state)] }).catch(() => null);
+		await editOrSendMinigame(message, state, minigameService.buildHangmanEmbed);
 		return true;
 	}
 
@@ -910,6 +917,15 @@ client.on(Events.InteractionCreate, async interaction => {
 
 				await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
 				await interaction.followUp({ content: 'Je hebt 1 kroontje geclaimd!', ephemeral: true }).catch(() => null);
+				return;
+			}
+
+			if (interaction.customId.startsWith('menu:')) {
+				const section = interaction.customId.split(':')[1];
+				await interaction.update({
+					embeds: [menuCommand.buildEmbed(section)],
+					components: menuCommand.buildButtons(section),
+				}).catch(() => null);
 				return;
 			}
 

@@ -130,15 +130,14 @@ function isGameAllowedInChannel(guildId, game, channelId) {
 
 function buildWordleEmbed(state) {
 	const rows = state.guesses.map(({ word, marks }) => {
-		const letters = word.toUpperCase().split('').map((ch, i) => {
-			const m = marks[i];
-			if (m === 'correct') return `🟩${ch}`;
-			if (m === 'present') return `🟨${ch}`;
-			return `⬛${ch}`;
-		}).join(' ');
-		return letters;
+		const emojiRow = marks.map(m => {
+			if (m === 'correct') return '🟩';
+			if (m === 'present') return '🟨';
+			return '⬛';
+		}).join('');
+		return `${emojiRow}  \`${word.toUpperCase()}\``;
 	});
-	const empty = '⬜⬜⬜⬜⬜';
+	const empty = '⬜'.repeat(state.answer.length);
 	while (rows.length < state.maxGuesses) rows.push(empty);
 
 	const embed = new EmbedBuilder()
@@ -148,8 +147,7 @@ function buildWordleEmbed(state) {
 		.setFooter({ text: 'Speler: ' + (state.starterTag || state.starterId) });
 
 	if (state.finished) {
-		const won = state.won;
-		embed.addFields({ name: won ? '✅ Gewonnen!' : '❌ Verloren', value: `Het woord was **${state.answer.toUpperCase()}**.` });
+		embed.addFields({ name: state.won ? '✅ Gewonnen!' : '❌ Verloren', value: `Het woord was **${state.answer.toUpperCase()}**.` });
 	}
 	return embed;
 }

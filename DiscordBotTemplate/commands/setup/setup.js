@@ -15,6 +15,15 @@ function buildOverviewEmbed(guildId) {
 	const r = settings.roles;
 	const econ = settings.economy;
 	const welcome = settings.welcome;
+	const mg = settings.minigames || {};
+	const cs = settings.crownshop || {};
+
+	const minigameLine = ['wordle', 'hangman', 'minesweeper'].map(g => {
+		const c = mg[g] || {};
+		const status = c.enabled ? '✅' : '❌';
+		const ch = c.channelId ? `<#${c.channelId}>` : 'overal';
+		return `• ${g}: ${status} • ${ch} • ${c.rewardCrowns ?? 0} kroontjes`;
+	}).join('\n');
 
 	const lines = [
 		'**Channels**',
@@ -28,18 +37,21 @@ function buildOverviewEmbed(guildId) {
 		`• Ticket support: ${r.ticketSupport ? `<@&${r.ticketSupport}>` : '_niet ingesteld_'}`,
 		'',
 		'**Economy**',
-		`• Status: ${econ.enabled ? '✅ aan' : '❌ uit'}`,
-		`• Crown spawn: ${econ.crownSpawnChance}% per bericht`,
-		`• Work: ${econ.workMin}-${econ.workMax} kroontjes / ${econ.workCooldownMinutes} min cooldown`,
-		`• Daily: ${econ.dailyMin}-${econ.dailyMax} kroontjes / ${econ.dailyCooldownHours}h cooldown`,
-		`• Pay tax: ${econ.payTaxPercent}%`,
-		`• Rob: ${econ.robSuccessChance}% kans, max ${econ.robMaxStealPercent}% steal, ${econ.robCooldownHours}h cooldown`,
+		`• Status: ${econ.enabled ? '✅ aan' : '❌ uit'} • Crown spawn: ${econ.crownSpawnChance}%`,
+		`• Work: ${econ.workMin}-${econ.workMax} (${econ.workCooldownMinutes}m) • Daily: ${econ.dailyMin}-${econ.dailyMax} (${econ.dailyCooldownHours}h)`,
+		`• Pay tax: ${econ.payTaxPercent}% • Rob: ${econ.robSuccessChance}% (${econ.robCooldownHours}h)`,
 		'',
 		'**Welcome**',
-		`• Status: ${welcome.enabled ? '✅ aan' : '❌ uit'} (mode: ${welcome.mode})`,
+		`• ${welcome.enabled ? '✅ aan' : '❌ uit'} • mode: ${welcome.mode}`,
 		'',
 		'**Counting**',
-		`• Status: ${settings.counting.enabled ? '✅ aan' : '❌ uit'}`,
+		`• ${settings.counting.enabled ? '✅ aan' : '❌ uit'} • save kost ${settings.counting.saveCost ?? 50} kroontjes`,
+		'',
+		'**Minigames**',
+		minigameLine,
+		'',
+		'**Crownshop**',
+		`• ${cs.xpPerCrown ?? 25} XP per kroontje`,
 		'',
 		'**Rol categorieën**',
 		`• Aantal: ${listCategories(guildId).length}`,
@@ -48,8 +60,8 @@ function buildOverviewEmbed(guildId) {
 	return new EmbedBuilder()
 		.setColor(0xb40f0f)
 		.setTitle('Server setup')
-		.setDescription('Kies een categorie om te configureren.')
-		.addFields({ name: 'Huidige instellingen', value: lines.join('\n') });
+		.setDescription('Kies een categorie om te configureren. Elke knop opent een submenu.')
+		.addFields({ name: 'Huidige instellingen', value: lines.join('\n').slice(0, 4000) });
 }
 
 function buildMainButtons() {
@@ -64,7 +76,11 @@ function buildMainButtons() {
 		new ActionRowBuilder().addComponents(
 			new ButtonBuilder().setCustomId('setup:menu:tickets').setLabel('Tickets').setStyle(ButtonStyle.Primary),
 			new ButtonBuilder().setCustomId('setup:menu:rolecats').setLabel('Rol categorieën').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:menu:minigames').setLabel('Minigames').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:menu:crownshop').setLabel('Crownshop').setStyle(ButtonStyle.Primary),
 			new ButtonBuilder().setCustomId('setup:menu:restrict').setLabel('Restricties').setStyle(ButtonStyle.Primary),
+		),
+		new ActionRowBuilder().addComponents(
 			new ButtonBuilder().setCustomId('setup:menu:status').setLabel('Status').setStyle(ButtonStyle.Secondary),
 			new ButtonBuilder().setCustomId('setup:menu:close').setLabel('Sluiten').setStyle(ButtonStyle.Secondary),
 		),

@@ -82,11 +82,14 @@ module.exports = {
 				starterId: interaction.user.id,
 				starterTag,
 				channelId: interaction.channelId,
+				messageId: null,
 				startedAt: Date.now(),
 				finished: false,
 			};
-			setActiveGame(interaction.guildId, interaction.channelId, state);
 			await interaction.reply({ embeds: [buildWordleEmbed(state)] });
+			const sent = await interaction.fetchReply().catch(() => null);
+			state.messageId = sent?.id || null;
+			setActiveGame(interaction.guildId, interaction.channelId, state);
 			return;
 		}
 
@@ -100,11 +103,14 @@ module.exports = {
 				starterId: interaction.user.id,
 				starterTag,
 				channelId: interaction.channelId,
+				messageId: null,
 				startedAt: Date.now(),
 				finished: false,
 			};
-			setActiveGame(interaction.guildId, interaction.channelId, state);
 			await interaction.reply({ embeds: [buildHangmanEmbed(state)] });
+			const sent = await interaction.fetchReply().catch(() => null);
+			state.messageId = sent?.id || null;
+			setActiveGame(interaction.guildId, interaction.channelId, state);
 			return;
 		}
 

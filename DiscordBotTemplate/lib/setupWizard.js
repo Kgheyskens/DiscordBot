@@ -20,6 +20,8 @@ const {
 	setEconomy,
 	setWelcome,
 	setCounting,
+	setMinigame,
+	setCrownshop,
 } = require('./guildSettings');
 const {
 	getRule,
@@ -36,6 +38,9 @@ const {
 	deleteCategory,
 	postOrUpdateCategoryMessage,
 } = require('./roleCategoryService');
+const minigameService = require('./minigameService');
+
+const MINIGAMES = ['wordle', 'hangman', 'minesweeper'];
 
 const CHANNEL_KEYS = [
 	{ key: 'welcome', label: 'Welcome channel' },
@@ -186,6 +191,16 @@ async function handleMenu(interaction, target) {
 		return;
 	}
 
+	if (target === 'minigames') {
+		await showMinigamesMenu(interaction);
+		return;
+	}
+
+	if (target === 'crownshop') {
+		await showCrownshopMenu(interaction);
+		return;
+	}
+
 	if (target === 'restrict') {
 		const select = new StringSelectMenuBuilder()
 			.setCustomId('setup:select:restrictCommand')
@@ -231,6 +246,12 @@ async function handleSelect(interaction) {
 			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle(meta?.label || roleKey).setDescription('Selecteer de juiste rol.')],
 			components: [new ActionRowBuilder().addComponents(select), backRow()],
 		}).catch(() => null);
+		return;
+	}
+
+	if (kind === 'minigamePick') {
+		const game = interaction.values[0];
+		await showMinigameDetail(interaction, game);
 		return;
 	}
 
@@ -542,6 +563,216 @@ async function postTicketPanel(interaction) {
 	await interaction.reply({ content: `Ticket panel geplaatst in <#${channel.id}>.`, flags: 64 });
 }
 
+async function showMinigamesMenu(interaction) {
+	const settings = getSettings(interaction.guildId);
+	const mg = settings.minigames || {};
+	const lines = MINIGAMES.map(g => {
+		const c = mg[g] || {};
+		return `**${g}** — ${c.enabled ? '✅ aan' : '❌ uit'} • kanaal: ${c.channelId ? `<#${c.channelId}>` : '_overal_'} • beloning: ${c.rewardCrowns ?? 0} kroontjes`;
+	}).join('\n');
+
+	const select = new StringSelectMenuBuilder()
+		.setCustomId('setup:select:minigamePick')
+		.setPlaceholder('Kies een minigame om te bewerken')
+		.addOptions(MINIGAMES.map(g => ({ label: g, value: g })));
+
+	const embed = new EmbedBuilder()
+		.setColor(0xb40f0f)
+		.setTitle('Minigames')
+		.setDescription(`Per minigame kun je toggelen, kanaal koppelen, beloning instellen en eigen woordenlijst beheren.\n\n${lines}`);
+
+	const payload = {
+		embeds: [embed],
+		components: [new ActionRowBuilder().addComponents(select), backRow()],
+	};
+	if (interaction.update) await interaction.update(payload).catch(() => null);
+	else await interaction.reply({ ...payload, flags: 64 }).catch(() => null);
+}
+
+async function showMinigameDetail(interaction, game) {
+	const settings = getSettings(interaction.guildId);
+	const cfg = settings.minigames?.[game] || {};
+	const customWords = minigameService.getCustomWords(interaction.guildId, game);
+
+	const embed = new EmbedBuilder()
+		.setColor(0xb40f0f)
+		.setTitle(`Minigame: ${game}`)
+		.setDescription([
+			`Status: ${cfg.enabled ? '✅ aan' : '❌ uit'}`,
+			`Kanaal: ${cfg.channelId ? `<#${cfg.channelId}>` : '_overal toegestaan_'}`,
+			`Beloning: ${cfg.rewardCrowns ?? 0} kroontjes`,
+			`Eigen woorden (${customWords.length}): ${customWords.length ? customWords.slice(0, 30).join(', ') + (customWords.length > 30 ? '…' : '') : '_geen_'}`,
+		].join('\n'));
+
+	const channelSelect = new ChannelSelectMenuBuilder()
+		.setCustomId(`setup:minigame:channel:${game}`)
+		.setPlaceholder('Beperk tot kanaal (leeg = overal)')
+		.setChannelTypes([ChannelType.GuildText, ChannelType.GuildAnnouncement])
+		.setMinValues(0)
+		.setMaxValues(1);
+
+	const buttonRow = new ActionRowBuilder().addComponents(
+		new ButtonBuilder().setCustomId(`setup:minigame:toggle:${game}`).setLabel(cfg.enabled ? 'Zet UIT' : 'Zet AAN').setStyle(cfg.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+		new ButtonBuilder().setCustomId(`setup:minigame:reward:${game}`).setLabel('Beloning aanpassen').setStyle(ButtonStyle.Primary),
+		new ButtonBuilder().setCustomId(`setup:minigame:addword:${game}`).setLabel('Woord toevoegen').setStyle(ButtonStyle.Primary).setDisabled(game === 'minesweeper'),
+		new ButtonBuilder().setCustomId(`setup:minigame:removeword:${game}`).setLabel('Woord verwijderen').setStyle(ButtonStyle.Danger).setDisabled(game === 'minesweeper'),
+	);
+
+	const navRow = new ActionRowBuilder().addComponents(
+		new ButtonBuilder().setCustomId('setup:menu:minigames').setLabel('Terug minigames').setStyle(ButtonStyle.Secondary),
+		new ButtonBuilder().setCustomId('setup:menu:back').setLabel('Hoofdmenu').setStyle(ButtonStyle.Secondary),
+	);
+
+	const payload = {
+		embeds: [embed],
+		components: [new ActionRowBuilder().addComponents(channelSelect), buttonRow, navRow],
+	};
+	if (interaction.replied || interaction.deferred) await interaction.editReply(payload).catch(() => null);
+	else if (interaction.update) await interaction.update(payload).catch(() => null);
+	else await interaction.reply({ ...payload, flags: 64 }).catch(() => null);
+}
+
+async function handleMinigameInteraction(interaction) {
+	if (!isAdmin(interaction)) {
+		await interaction.reply({ content: 'Alleen admins.', flags: 64 });
+		return;
+	}
+	const parts = interaction.customId.split(':');
+	const action = parts[2];
+	const game = parts[3];
+
+	if (action === 'channel' && interaction.isChannelSelectMenu()) {
+		const id = interaction.values?.[0] || null;
+		setMinigame(interaction.guildId, game, { channelId: id });
+		await showMinigameDetail(interaction, game);
+		return;
+	}
+
+	if (action === 'toggle' && interaction.isButton()) {
+		const cur = getSettings(interaction.guildId).minigames?.[game] || {};
+		setMinigame(interaction.guildId, game, { enabled: !cur.enabled });
+		await showMinigameDetail(interaction, game);
+		return;
+	}
+
+	if (action === 'reward' && interaction.isButton()) {
+		const cur = getSettings(interaction.guildId).minigames?.[game] || {};
+		const modal = new ModalBuilder().setCustomId(`setup:modal:minigameReward:${game}`).setTitle(`Beloning ${game}`);
+		modal.addComponents(new ActionRowBuilder().addComponents(
+			new TextInputBuilder().setCustomId('reward').setLabel('Kroontjes per win').setStyle(TextInputStyle.Short).setValue(String(cur.rewardCrowns ?? 0)).setRequired(true),
+		));
+		await interaction.showModal(modal);
+		return;
+	}
+
+	if (action === 'addword' && interaction.isButton()) {
+		const modal = new ModalBuilder().setCustomId(`setup:modal:minigameAddWord:${game}`).setTitle(`Woord toevoegen (${game})`);
+		modal.addComponents(new ActionRowBuilder().addComponents(
+			new TextInputBuilder().setCustomId('word').setLabel(game === 'wordle' ? '5-letter woord' : 'Woord').setStyle(TextInputStyle.Short).setRequired(true),
+		));
+		await interaction.showModal(modal);
+		return;
+	}
+
+	if (action === 'removeword' && interaction.isButton()) {
+		const modal = new ModalBuilder().setCustomId(`setup:modal:minigameRemoveWord:${game}`).setTitle(`Woord verwijderen (${game})`);
+		modal.addComponents(new ActionRowBuilder().addComponents(
+			new TextInputBuilder().setCustomId('word').setLabel('Woord om te verwijderen').setStyle(TextInputStyle.Short).setRequired(true),
+		));
+		await interaction.showModal(modal);
+	}
+}
+
+async function handleMinigameModal(interaction) {
+	const parts = interaction.customId.split(':');
+	const kind = parts[2];
+	const game = parts[3];
+
+	if (kind === 'minigameReward') {
+		const reward = clampInt(interaction.fields.getTextInputValue('reward'), 0, 1_000_000, 0);
+		setMinigame(interaction.guildId, game, { rewardCrowns: reward });
+		await interaction.reply({ content: `Beloning voor **${game}** ingesteld op ${reward} kroontjes.`, flags: 64 });
+		return;
+	}
+	if (kind === 'minigameAddWord') {
+		const word = interaction.fields.getTextInputValue('word');
+		if (game === 'wordle' && word.trim().length !== 5) {
+			await interaction.reply({ content: 'Wordle woorden moeten exact 5 letters zijn.', flags: 64 });
+			return;
+		}
+		const result = minigameService.addCustomWord(interaction.guildId, game, word);
+		await interaction.reply({ content: result.error || `Woord toegevoegd aan **${game}**.`, flags: 64 });
+		return;
+	}
+	if (kind === 'minigameRemoveWord') {
+		const word = interaction.fields.getTextInputValue('word');
+		const result = minigameService.removeCustomWord(interaction.guildId, game, word);
+		await interaction.reply({ content: result.error || `Woord verwijderd uit **${game}**.`, flags: 64 });
+	}
+}
+
+async function showCrownshopMenu(interaction) {
+	const settings = getSettings(interaction.guildId);
+	const cs = settings.crownshop || {};
+	const counting = settings.counting || {};
+
+	const embed = new EmbedBuilder()
+		.setColor(0xb40f0f)
+		.setTitle('Crownshop instellingen')
+		.setDescription([
+			`XP per kroontje (buyxp): **${cs.xpPerCrown ?? 25}** XP/kroontje`,
+			`Counting save prijs: **${counting.saveCost ?? 50}** kroontjes per save`,
+		].join('\n'));
+
+	const buttons = new ActionRowBuilder().addComponents(
+		new ButtonBuilder().setCustomId('setup:crownshop:xp').setLabel('XP-conversie').setStyle(ButtonStyle.Primary),
+		new ButtonBuilder().setCustomId('setup:crownshop:savecost').setLabel('Save-prijs').setStyle(ButtonStyle.Primary),
+	);
+
+	const payload = { embeds: [embed], components: [buttons, backRow()] };
+	if (interaction.update) await interaction.update(payload).catch(() => null);
+	else await interaction.reply({ ...payload, flags: 64 }).catch(() => null);
+}
+
+async function handleCrownshopButton(interaction, action) {
+	if (!isAdmin(interaction)) {
+		await interaction.reply({ content: 'Alleen admins.', flags: 64 });
+		return;
+	}
+	const settings = getSettings(interaction.guildId);
+	if (action === 'xp') {
+		const modal = new ModalBuilder().setCustomId('setup:modal:crownshopXp').setTitle('XP per kroontje');
+		modal.addComponents(new ActionRowBuilder().addComponents(
+			new TextInputBuilder().setCustomId('xpPerCrown').setLabel('Hoeveel XP geeft 1 kroontje').setStyle(TextInputStyle.Short).setValue(String(settings.crownshop?.xpPerCrown ?? 25)).setRequired(true),
+		));
+		await interaction.showModal(modal);
+		return;
+	}
+	if (action === 'savecost') {
+		const modal = new ModalBuilder().setCustomId('setup:modal:crownshopSaveCost').setTitle('Save-prijs');
+		modal.addComponents(new ActionRowBuilder().addComponents(
+			new TextInputBuilder().setCustomId('saveCost').setLabel('Kroontjes per counting save').setStyle(TextInputStyle.Short).setValue(String(settings.counting?.saveCost ?? 50)).setRequired(true),
+		));
+		await interaction.showModal(modal);
+	}
+}
+
+async function handleCrownshopModal(interaction) {
+	const parts = interaction.customId.split(':');
+	const kind = parts[2];
+	if (kind === 'crownshopXp') {
+		const v = clampInt(interaction.fields.getTextInputValue('xpPerCrown'), 1, 10_000, 25);
+		setCrownshop(interaction.guildId, { xpPerCrown: v });
+		await interaction.reply({ content: `XP per kroontje is nu **${v}**.`, flags: 64 });
+		return;
+	}
+	if (kind === 'crownshopSaveCost') {
+		const v = clampInt(interaction.fields.getTextInputValue('saveCost'), 1, 1_000_000, 50);
+		setCounting(interaction.guildId, { saveCost: v });
+		await interaction.reply({ content: `Save prijs is nu **${v}** kroontjes.`, flags: 64 });
+	}
+}
+
 async function showRoleCatsList(interaction) {
 	const cats = listCategories(interaction.guildId);
 	const lines = cats.length
@@ -807,6 +1038,8 @@ async function dispatch(interaction) {
 			if (section === 'restrict' && action === 'clear') { await handleRestrictInteraction(interaction); return true; }
 			if (section === 'rolecats') { await handleRoleCatsButton(interaction, action); return true; }
 			if (section === 'rolecat') { await handleRoleCatInteraction(interaction); return true; }
+			if (section === 'minigame') { await handleMinigameInteraction(interaction); return true; }
+			if (section === 'crownshop') { await handleCrownshopButton(interaction, action); return true; }
 		}
 		if (interaction.isStringSelectMenu()) {
 			if (section === 'select') { await handleSelect(interaction); return true; }
@@ -817,6 +1050,7 @@ async function dispatch(interaction) {
 			if (section === 'setChannel') { await handleChannelSelect(interaction); return true; }
 			if (section === 'restrict' && action === 'channels') { await handleRestrictInteraction(interaction); return true; }
 			if (section === 'rolecat' && action === 'channel') { await handleRoleCatInteraction(interaction); return true; }
+			if (section === 'minigame' && action === 'channel') { await handleMinigameInteraction(interaction); return true; }
 		}
 		if (interaction.isRoleSelectMenu()) {
 			if (section === 'setRole') { await handleRoleSelect(interaction); return true; }
@@ -826,6 +1060,14 @@ async function dispatch(interaction) {
 		if (interaction.isModalSubmit()) {
 			if (section === 'modal' && (action === 'rolecatNew' || action === 'rolecatRename')) {
 				await handleRoleCatModal(interaction);
+				return true;
+			}
+			if (section === 'modal' && (action === 'minigameReward' || action === 'minigameAddWord' || action === 'minigameRemoveWord')) {
+				await handleMinigameModal(interaction);
+				return true;
+			}
+			if (section === 'modal' && (action === 'crownshopXp' || action === 'crownshopSaveCost')) {
+				await handleCrownshopModal(interaction);
 				return true;
 			}
 			await handleModalSubmit(interaction);

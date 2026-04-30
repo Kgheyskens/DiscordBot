@@ -3,7 +3,19 @@
     "1407468156796145666": {
       "game": "wordle",
       "answer": "vrouw",
-      "guesses": [],
+      "guesses": [
+        {
+          "word": "books",
+          "marks": [
+            "absent",
+            "absent",
+            "correct",
+            "absent",
+            "absent"
+          ],
+          "userId": "1192487598342541459"
+        }
+      ],
       "maxGuesses": 6,
       "starterId": "1192487598342541459",
       "starterTag": "_the.one.piece_",

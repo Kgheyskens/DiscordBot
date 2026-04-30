@@ -3,15 +3,13 @@ const { SlashCommandBuilder } = require('discord.js');
 const { addBalance, getBalance, subtractBalance } = require('../../lib/crownService');
 const { processLevelGain } = require('../../lib/levelingService');
 const { readJson, writeJson } = require('../../lib/jsonStore');
+const { getSettings } = require('../../lib/guildSettings');
 
 const crownsFile = path.join(__dirname, '..', '..', 'data', 'crowns.json');
 const levelsFile = path.join(__dirname, '..', '..', 'data', 'levels.json');
 const rewardsFile = path.join(__dirname, '..', '..', 'data', 'roleRewards.json');
 const levelsChannelFile = path.join(__dirname, '..', '..', 'data', 'levelsChannel.json');
 const countingSavesFile = path.join(__dirname, '..', '..', 'data', 'countingSaves.json');
-
-const crownsPerXp = 1 / 25;
-const COUNTING_SAVE_PRICE = 50;
 
 function getCountingSaves(guildId, userId) {
 	const all = readJson(countingSavesFile, {});
@@ -43,7 +41,7 @@ module.exports = {
 		.addSubcommand(subcommand =>
 			subcommand
 				.setName('buysave')
-				.setDescription(`Koop counting saves (${COUNTING_SAVE_PRICE} kroontjes per save)`)
+				.setDescription('Koop counting saves')
 				.addIntegerOption(option =>
 					option
 						.setName('amount')
@@ -57,6 +55,10 @@ module.exports = {
 	async execute(interaction) {
 		const subcommand = interaction.options.getSubcommand();
 
+		const settings = getSettings(interaction.guildId);
+		const xpPerCrown = settings.crownshop?.xpPerCrown ?? 25;
+		const saveCost = settings.counting?.saveCost ?? 50;
+
 		if (subcommand === 'buyxp') {
 			const amount = interaction.options.getInteger('amount');
 			if (!amount || amount <= 0) {
@@ -64,7 +66,7 @@ module.exports = {
 				return;
 			}
 
-			const crownsCost = Math.ceil(amount * crownsPerXp);
+			const crownsCost = Math.ceil(amount / xpPerCrown);
 			const balance = getBalance(crownsFile, interaction.guildId, interaction.user.id);
 			if (balance < crownsCost) {
 				await interaction.reply({ content: `Je hebt ${crownsCost} kroontjes nodig maar je hebt er maar ${balance}.`, flags: 64 });
@@ -92,7 +94,7 @@ module.exports = {
 
 		if (subcommand === 'buysave') {
 			const amount = interaction.options.getInteger('amount');
-			const cost = amount * COUNTING_SAVE_PRICE;
+			const cost = amount * saveCost;
 			const balance = getBalance(crownsFile, interaction.guildId, interaction.user.id);
 			if (balance < cost) {
 				await interaction.reply({ content: `Je hebt ${cost} kroontjes nodig maar je hebt er maar ${balance}.`, flags: 64 });
