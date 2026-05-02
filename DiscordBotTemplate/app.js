@@ -295,16 +295,86 @@ async function editOrSendMinigame(message, state, builder, finalContent = null) 
 	await message.channel.send({ embeds: [builder(state)], content: finalContent || undefined }).catch(() => null);
 }
 
+async function handleMinesweeperMessage(message, state) {
+	const raw = message.content.trim();
+	if (!raw) return false;
+	if (state.starterId !== message.author.id) return false;
+
+	if (raw.toLowerCase() === 'stop') {
+		state.finished = true;
+		state.won = false;
+		minigameService.setActiveGame(message.guild.id, message.channel.id, null);
+		await editOrSendMinigame(message, state, minigameService.buildMinesweeperEmbed, '🛑 Minesweeper gestopt.');
+		return true;
+	}
+
+	const parsed = minigameService.parseMinesweeperInput(state, raw);
+	if (!parsed) return false;
+
+	const cell = state.cells[parsed.idx];
+	if (cell.revealed) {
+		await message.delete().catch(() => null);
+		return true;
+	}
+
+	if (parsed.flag) {
+		cell.flagged = !cell.flagged;
+		minigameService.setActiveGame(message.guild.id, message.channel.id, state);
+		await editOrSendMinigame(message, state, minigameService.buildMinesweeperEmbed);
+		return true;
+	}
+
+	if (cell.flagged) {
+		await message.delete().catch(() => null);
+		return true;
+	}
+
+	if (cell.bomb) {
+		cell.revealed = true;
+		state.finished = true;
+		state.won = false;
+		minigameService.setActiveGame(message.guild.id, message.channel.id, null);
+		await editOrSendMinigame(message, state, minigameService.buildMinesweeperEmbed, '💥 Boem! Je raakte een bom.');
+		return true;
+	}
+
+	minigameService.revealMinesweeperFlood(state, parsed.idx);
+	if (minigameService.checkMinesweeperWin(state)) {
+		state.finished = true;
+		state.won = true;
+		const reward = await minigameService.awardWin(message.guild.id, message.author.id, 'minesweeper');
+		minigameService.setActiveGame(message.guild.id, message.channel.id, null);
+		await editOrSendMinigame(message, state, minigameService.buildMinesweeperEmbed,
+			reward > 0 ? `🎉 <@${message.author.id}> wint en krijgt **${reward}** kroontjes!` : `🎉 <@${message.author.id}> wint!`);
+		return true;
+	}
+
+	minigameService.setActiveGame(message.guild.id, message.channel.id, state);
+	await editOrSendMinigame(message, state, minigameService.buildMinesweeperEmbed);
+	return true;
+}
+
 async function handleMinigameMessage(message) {
 	const state = minigameService.getActiveGame(message.guild.id, message.channel.id);
 	if (!state || state.finished) return false;
-	if (state.game !== 'wordle' && state.game !== 'hangman') return false;
+	if (state.game !== 'wordle' && state.game !== 'hangman' && state.game !== 'minesweeper') return false;
+
+	if (state.game === 'minesweeper') {
+		return handleMinesweeperMessage(message, state);
+	}
 
 	const text = message.content.trim().toLowerCase();
 	if (!text || !/^[a-z]+$/.test(text)) return false;
 
 	if (state.game === 'wordle') {
 		if (text.length !== state.answer.length) return false;
+		if (!minigameService.isValidWord('wordle', text)) {
+			await message.reply({ content: `❌ \`${text.toUpperCase()}\` staat niet in de woordenlijst.` })
+				.then(reply => setTimeout(() => reply.delete().catch(() => null), 4000))
+				.catch(() => null);
+			await message.delete().catch(() => null);
+			return true;
+		}
 		const marks = minigameService.evaluateWordleGuess(state.answer, text);
 		state.guesses.push({ word: text, marks, userId: message.author.id });
 		const won = marks.every(m => m === 'correct');

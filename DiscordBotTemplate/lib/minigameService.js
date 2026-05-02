@@ -8,24 +8,14 @@ const {
 const { readJson, writeJson } = require('./jsonStore');
 const { getSettings } = require('./guildSettings');
 const { addBalance } = require('./crownService');
+const { isValidWord, getWordleWords, getHangmanWords } = require('./wordList');
 
 const minigamesFile = path.join(__dirname, '..', 'data', 'minigames.json');
 const wordsFile = path.join(__dirname, '..', 'data', 'minigameWords.json');
 const crownsFile = path.join(__dirname, '..', 'data', 'crowns.json');
 
-const DEFAULT_WORDLE_WORDS = [
-	'appel', 'stoel', 'koers', 'paard', 'tafel', 'klauw', 'beurs', 'fluit',
-	'kruid', 'lampe', 'magie', 'plant', 'regen', 'sneep', 'tover', 'ijver',
-	'water', 'zomer', 'storm', 'plein', 'vrouw', 'baard', 'noten', 'olijf',
-	'kleur', 'snoep', 'reuze', 'hemel', 'cijfer'.slice(0, 5), 'jacht',
-];
-
-const DEFAULT_HANGMAN_WORDS = [
-	'auto', 'fiets', 'kasteel', 'olifant', 'computer', 'discord', 'twitch',
-	'koekje', 'kroontje', 'voetbal', 'wereld', 'hoofdstad', 'vlaanderen',
-	'nederland', 'gitaar', 'piano', 'zonnebril', 'paraplu', 'sleutel',
-	'bibliotheek', 'school', 'rugzak', 'handschoen', 'vlinder',
-];
+const DEFAULT_WORDLE_WORDS = getWordleWords();
+const DEFAULT_HANGMAN_WORDS = getHangmanWords();
 
 const HANGMAN_STAGES = [
 	'```\n  +---+\n      |\n      |\n      |\n     ===\n```',
@@ -259,51 +249,72 @@ function checkMinesweeperWin(state) {
 	return state.cells.every(c => c.bomb ? !c.revealed : c.revealed);
 }
 
-function buildMinesweeperRows(state) {
-	const rows = [];
+const COL_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+function colLetter(x) {
+	return COL_LETTERS[x] || '?';
+}
+
+function renderMinesweeperGrid(state) {
+	const lines = [];
+	const header = '   ' + Array.from({ length: state.width }, (_, x) => colLetter(x)).join(' ');
+	lines.push(header);
 	for (let y = 0; y < state.height; y += 1) {
-		const row = new ActionRowBuilder();
+		const rowLabel = String(y + 1).padStart(2, ' ');
+		const cells = [];
 		for (let x = 0; x < state.width; x += 1) {
 			const idx = y * state.width + x;
 			const cell = state.cells[idx];
-			let label = '\u200b';
-			let style = ButtonStyle.Danger;
-			let disabled = false;
+			let ch = '·';
 			if (state.finished) {
-				if (cell.bomb) { label = '💣'; style = ButtonStyle.Danger; }
-				else { label = cell.adj === 0 ? '·' : String(cell.adj); style = ButtonStyle.Secondary; }
-				disabled = true;
+				if (cell.bomb) ch = '*';
+				else if (cell.adj === 0) ch = ' ';
+				else ch = String(cell.adj);
 			} else if (cell.flagged) {
-				label = '🚩';
-				style = ButtonStyle.Primary;
+				ch = 'F';
 			} else if (cell.revealed) {
-				label = cell.adj === 0 ? '·' : String(cell.adj);
-				style = ButtonStyle.Secondary;
-				disabled = true;
+				ch = cell.adj === 0 ? ' ' : String(cell.adj);
 			}
-			row.addComponents(
-				new ButtonBuilder()
-					.setCustomId(`mg:ms:${state.gameId}:${idx}`)
-					.setLabel(label)
-					.setStyle(style)
-					.setDisabled(disabled),
-			);
+			cells.push(ch);
 		}
-		rows.push(row);
+		lines.push(`${rowLabel} ${cells.join(' ')}`);
 	}
-	const ctrl = new ActionRowBuilder().addComponents(
-		new ButtonBuilder().setCustomId(`mg:ms:${state.gameId}:flag`).setLabel(state.flagMode ? '🚩 Vlag-modus AAN' : '🚩 Vlag-modus UIT').setStyle(state.flagMode ? ButtonStyle.Success : ButtonStyle.Secondary),
-		new ButtonBuilder().setCustomId(`mg:ms:${state.gameId}:stop`).setLabel('Stop').setStyle(ButtonStyle.Danger),
-	);
-	rows.push(ctrl);
-	return rows;
+	return '```\n' + lines.join('\n') + '\n```';
+}
+
+function parseMinesweeperInput(state, text) {
+	const cleaned = String(text || '').trim().toUpperCase().replace(/\s+/g, '');
+	if (!cleaned) return null;
+	const m = cleaned.match(/^(F)?([A-Z])(\d{1,2})$/);
+	if (!m) return null;
+	const flag = !!m[1];
+	const x = COL_LETTERS.indexOf(m[2]);
+	const y = parseInt(m[3], 10) - 1;
+	if (x < 0 || x >= state.width) return null;
+	if (y < 0 || y >= state.height) return null;
+	return { x, y, idx: y * state.width + x, flag };
+}
+
+function buildMinesweeperRows() {
+	return [];
 }
 
 function buildMinesweeperEmbed(state) {
+	const grid = renderMinesweeperGrid(state);
+	const desc = [
+		`Bord: **${state.width}×${state.height}**. Hoeveel bommen? Dat zoek je zelf maar uit 😈`,
+		'',
+		'**Hoe spelen?** Type coördinaten in de chat:',
+		'• `B3` — onthul cel B3',
+		'• `FB3` — plaats/verwijder vlag op B3',
+		'• `stop` — stop het spel',
+		'',
+		grid,
+	].join('\n');
 	const embed = new EmbedBuilder()
 		.setColor(0xb40f0f)
 		.setTitle('💣 Minesweeper')
-		.setDescription(`Klik tegels om te onthullen. Vlag-modus markeert verdachte cellen.\nBord: ${state.width}×${state.height}. Hoeveel bommen er liggen? Dat moet je zelf uitvogelen 😈`)
+		.setDescription(desc)
 		.setFooter({ text: 'Speler: ' + (state.starterTag || state.starterId) });
 	if (state.finished) {
 		embed.addFields({ name: state.won ? '✅ Gewonnen!' : '💥 Gefaald', value: state.won ? `Alle veilige tegels onthuld. Er waren **${state.bombs}** bommen.` : `Je raakte een bom. Er waren er **${state.bombs}** in totaal.` });
@@ -356,9 +367,12 @@ function buildHelpEmbed(game) {
 			.setColor(0xb40f0f)
 			.setTitle('Help: Minesweeper')
 			.setDescription([
-				'Klik tegels om ze te onthullen. Cijfers tonen hoeveel bommen er aangrenzend liggen.',
-				'Gebruik **Vlag-modus** om verdachte tegels te markeren in plaats van te onthullen.',
+				'Type coördinaten in de chat om te spelen:',
+				'• `B3` — onthul cel B3 (kolom B, rij 3)',
+				'• `FB3` — plaats of verwijder een vlag op B3',
+				'• `stop` — stop het spel',
 				'',
+				'Cijfers tonen hoeveel bommen er aangrenzend liggen.',
 				'Onthul alle veilige tegels om te winnen — raak je een bom, dan verlies je.',
 				'Wint? Dan krijg je kroontjes.',
 			].join('\n'));
@@ -386,7 +400,9 @@ module.exports = {
 	checkMinesweeperWin,
 	buildMinesweeperRows,
 	buildMinesweeperEmbed,
+	parseMinesweeperInput,
 	awardMinigameWin,
 	awardWin,
 	buildHelpEmbed,
+	isValidWord,
 };

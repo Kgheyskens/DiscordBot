@@ -115,9 +115,9 @@ module.exports = {
 		}
 
 		if (game === 'minesweeper') {
-			const width = 5;
-			const height = 4;
-			const bombs = 7;
+			const width = 8;
+			const height = 8;
+			const bombs = 12;
 			const cells = generateMinesweeperBoard(width, height, bombs);
 			const gameId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 			const state = {
@@ -127,18 +127,17 @@ module.exports = {
 				height,
 				bombs,
 				cells,
-				flagMode: false,
 				starterId: interaction.user.id,
 				starterTag,
 				channelId: interaction.channelId,
+				messageId: null,
 				startedAt: Date.now(),
 				finished: false,
 			};
+			await interaction.reply({ embeds: [buildMinesweeperEmbed(state)] });
+			const sent = await interaction.fetchReply().catch(() => null);
+			state.messageId = sent?.id || null;
 			setActiveGame(interaction.guildId, interaction.channelId, state);
-			await interaction.reply({
-				embeds: [buildMinesweeperEmbed(state)],
-				components: buildMinesweeperRows(state),
-			});
 		}
 	},
 };
