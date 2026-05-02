@@ -1,11 +1,11 @@
 const path = require('path');
 const { EmbedBuilder, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
 const { listItems, addItem, removeItem, findItem, purchaseItem } = require('../../lib/shopService');
-const { addBalance } = require('../../lib/crownService');
+const { addBalance } = require('../../lib/coinService');
 const { processLevelGain } = require('../../lib/levelingService');
 const { isEconomyEnabled } = require('../../lib/economyService');
 
-const crownsFile = path.join(__dirname, '..', '..', 'data', 'crowns.json');
+const coinsFile = path.join(__dirname, '..', '..', 'data', 'coins.json');
 const crownsConfigFile = path.join(__dirname, '..', '..', 'data', 'crownsConfig.json');
 const levelsFile = path.join(__dirname, '..', '..', 'data', 'levels.json');
 const rewardsFile = path.join(__dirname, '..', '..', 'data', 'roleRewards.json');
@@ -29,7 +29,7 @@ module.exports = {
 					{ name: 'custom', value: 'custom' },
 				).setRequired(true))
 				.addStringOption(opt => opt.setName('name').setDescription('Naam in de shop').setRequired(true))
-				.addIntegerOption(opt => opt.setName('price').setDescription('Prijs in kroontjes').setMinValue(1).setRequired(true))
+				.addIntegerOption(opt => opt.setName('price').setDescription('Prijs in coins').setMinValue(1).setRequired(true))
 				.addRoleOption(opt => opt.setName('role').setDescription('Bij type=role: welke rol'))
 				.addIntegerOption(opt => opt.setName('xp').setDescription('Bij type=xp: hoeveel XP').setMinValue(1))
 				.addStringOption(opt => opt.setName('description').setDescription('Korte omschrijving (optioneel)')))
@@ -52,7 +52,7 @@ module.exports = {
 				const tag = item.type === 'role' ? `<@&${item.payload}>`
 					: item.type === 'xp' ? `${item.payload} XP`
 					: 'custom';
-				return `**${item.name}** — ${item.price} kroontjes\nID: \`${item.id}\` • ${tag}${item.description ? `\n${item.description}` : ''}`;
+				return `**${item.name}** — ${item.price} coins\nID: \`${item.id}\` • ${tag}${item.description ? `\n${item.description}` : ''}`;
 			});
 
 			const embed = new EmbedBuilder()
@@ -65,7 +65,7 @@ module.exports = {
 
 		if (subcommand === 'buy') {
 			if (!isEconomyEnabled(interaction.guildId, crownsConfigFile)) {
-				await interaction.reply({ content: 'Het kroontjessysteem staat uit.', flags: 64 });
+				await interaction.reply({ content: 'Het economy-systeem staat uit.', flags: 64 });
 				return;
 			}
 
@@ -95,13 +95,13 @@ module.exports = {
 
 				const role = interaction.guild.roles.cache.get(item.payload) || await interaction.guild.roles.fetch(item.payload).catch(() => null);
 				if (!role) {
-					addBalance(crownsFile, interaction.guildId, interaction.user.id, item.price);
+					addBalance(coinsFile, interaction.guildId, interaction.user.id, item.price);
 					await interaction.reply({ content: 'Rol bestaat niet meer. Aankoop teruggedraaid.', flags: 64 });
 					return;
 				}
 
 				await member.roles.add(role).catch(() => null);
-				await interaction.reply({ content: `Je hebt **${role.name}** gekocht voor ${item.price} kroontjes. Nieuwe balans: ${result.newBalance}.`, flags: 64 });
+				await interaction.reply({ content: `Je hebt **${role.name}** gekocht voor ${item.price} coins. Nieuwe balans: ${result.newBalance}.`, flags: 64 });
 				return;
 			}
 
@@ -124,7 +124,7 @@ module.exports = {
 				});
 
 				await interaction.reply({
-					content: `Je hebt **${xpAmount} XP** gekocht voor ${item.price} kroontjes.${levelResult.leveledUp ? ` Je bent nu level ${levelResult.level}.` : ''} Nieuwe balans: ${result.newBalance}.`,
+					content: `Je hebt **${xpAmount} XP** gekocht voor ${item.price} coins.${levelResult.leveledUp ? ` Je bent nu level ${levelResult.level}.` : ''} Nieuwe balans: ${result.newBalance}.`,
 					flags: 64,
 				});
 				return;
@@ -135,7 +135,7 @@ module.exports = {
 				await interaction.reply({ content: result.error, flags: 64 });
 				return;
 			}
-			await interaction.reply({ content: `Je hebt **${item.name}** gekocht voor ${item.price} kroontjes. ${item.description || ''} Nieuwe balans: ${result.newBalance}.`, flags: 64 });
+			await interaction.reply({ content: `Je hebt **${item.name}** gekocht voor ${item.price} coins. ${item.description || ''} Nieuwe balans: ${result.newBalance}.`, flags: 64 });
 			return;
 		}
 

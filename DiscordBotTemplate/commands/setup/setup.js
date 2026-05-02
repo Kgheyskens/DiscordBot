@@ -17,6 +17,8 @@ function buildOverviewEmbed(guildId) {
 	const welcome = settings.welcome;
 	const mg = settings.minigames || {};
 	const cs = settings.crownshop || {};
+	const challenge = settings.challenge || {};
+	const hof = settings.hallOfFame || {};
 
 	const minigameLine = ['wordle', 'hangman', 'minesweeper'].map(g => {
 		const c = mg[g] || {};
@@ -53,6 +55,12 @@ function buildOverviewEmbed(guildId) {
 		'**Crownshop**',
 		`• ${cs.xpPerCrown ?? 25} XP per kroontje`,
 		'',
+		'**Daily Challenge**',
+		`• ${challenge.enabled ? '✅ aan' : '❌ uit'} • kanaal: ${ch.challenge ? `<#${ch.challenge}>` : '_niet ingesteld_'} • post om ${challenge.postHour ?? 9}:00 • beloning: ${challenge.rewardKroontjes ?? 10} kroontjes • ${(challenge.customPuzzles || []).length} eigen puzzels`,
+		'',
+		'**Hall of Fame**',
+		`• ${hof.enabled ? '✅ aan' : '❌ uit'} • kanaal: ${ch.halloffame ? `<#${ch.halloffame}>` : '_niet ingesteld_'} • dag ${hof.postDay ?? 1} om ${hof.postHour ?? 10}:00`,
+		'',
 		'**Rol categorieën**',
 		`• Aantal: ${listCategories(guildId).length}`,
 	];
@@ -81,6 +89,8 @@ function buildMainButtons() {
 			new ButtonBuilder().setCustomId('setup:menu:restrict').setLabel('Restricties').setStyle(ButtonStyle.Primary),
 		),
 		new ActionRowBuilder().addComponents(
+			new ButtonBuilder().setCustomId('setup:menu:challenge').setLabel('Daily Challenge').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:menu:halloffame').setLabel('Hall of Fame').setStyle(ButtonStyle.Primary),
 			new ButtonBuilder().setCustomId('setup:menu:status').setLabel('Status').setStyle(ButtonStyle.Secondary),
 			new ButtonBuilder().setCustomId('setup:menu:close').setLabel('Sluiten').setStyle(ButtonStyle.Secondary),
 		),

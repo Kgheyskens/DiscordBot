@@ -1,20 +1,20 @@
 const path = require('path');
 const { EmbedBuilder, SlashCommandBuilder } = require('discord.js');
 const { claimDailyReward, formatDuration } = require('../../lib/economyService');
-const { getBalance } = require('../../lib/crownService');
+const { getBalance } = require('../../lib/coinService');
 
-const crownsFile = path.join(__dirname, '..', '..', 'data', 'crowns.json');
+const coinsFile = path.join(__dirname, '..', '..', 'data', 'coins.json');
 const crownsConfigFile = path.join(__dirname, '..', '..', 'data', 'crownsConfig.json');
 const economyTimersFile = path.join(__dirname, '..', '..', 'data', 'economyTimers.json');
 
 module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('daily')
-		.setDescription('Claim je dagelijkse kroontjesbeloning'),
+		.setDescription('Claim je dagelijkse coin-beloning'),
 	async execute(interaction) {
 		await interaction.deferReply({ ephemeral: true });
 		const result = claimDailyReward({
-			crownsFile,
+			coinsFile,
 			crownsConfigFile,
 			timersFile: economyTimersFile,
 			guildId: interaction.guildId,
@@ -22,7 +22,7 @@ module.exports = {
 		});
 
 		if (result.disabled) {
-			await interaction.editReply({ content: 'Het kroontjessysteem staat uit.' });
+			await interaction.editReply({ content: 'Het economy-systeem staat uit.' });
 			return;
 		}
 
@@ -31,12 +31,12 @@ module.exports = {
 			return;
 		}
 
-		const balance = getBalance(crownsFile, interaction.guildId, interaction.user.id);
+		const balance = getBalance(coinsFile, interaction.guildId, interaction.user.id);
 		const embed = new EmbedBuilder()
 			.setColor(0xb40f0f)
 			.setTitle('Daily geclaimd')
-			.setDescription(`Je hebt **${result.amount} kroontjes** gekregen.`)
-			.addFields({ name: 'Nieuwe balans', value: `${balance} kroontjes`, inline: true });
+			.setDescription(`Je hebt **${result.amount} coins** gekregen.`)
+			.addFields({ name: 'Nieuwe balans', value: `${balance} coins`, inline: true });
 
 		await interaction.editReply({ embeds: [embed] });
 	},

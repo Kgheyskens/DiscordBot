@@ -1,26 +1,193 @@
 {
   "1407468154258587700": {
     "1407468156796145666": {
-      "game": "wordle",
-      "answer": "vrouw",
-      "guesses": [
+      "game": "minesweeper",
+      "gameId": "mol71xx30g1",
+      "width": 5,
+      "height": 5,
+      "bombs": 5,
+      "cells": [
         {
-          "word": "books",
-          "marks": [
-            "absent",
-            "absent",
-            "correct",
-            "absent",
-            "absent"
-          ],
-          "userId": "1192487598342541459"
+          "idx": 0,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 1
+        },
+        {
+          "idx": 1,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 1
+        },
+        {
+          "idx": 2,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 2
+        },
+        {
+          "idx": 3,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 1
+        },
+        {
+          "idx": 4,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 1
+        },
+        {
+          "idx": 5,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 1
+        },
+        {
+          "idx": 6,
+          "bomb": true,
+          "revealed": false,
+          "flagged": false,
+          "adj": 0
+        },
+        {
+          "idx": 7,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 2
+        },
+        {
+          "idx": 8,
+          "bomb": true,
+          "revealed": false,
+          "flagged": false,
+          "adj": 0
+        },
+        {
+          "idx": 9,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 1
+        },
+        {
+          "idx": 10,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 3
+        },
+        {
+          "idx": 11,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 4
+        },
+        {
+          "idx": 12,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 4
+        },
+        {
+          "idx": 13,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 2
+        },
+        {
+          "idx": 14,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 1
+        },
+        {
+          "idx": 15,
+          "bomb": true,
+          "revealed": false,
+          "flagged": false,
+          "adj": 0
+        },
+        {
+          "idx": 16,
+          "bomb": true,
+          "revealed": false,
+          "flagged": false,
+          "adj": 0
+        },
+        {
+          "idx": 17,
+          "bomb": true,
+          "revealed": false,
+          "flagged": false,
+          "adj": 0
+        },
+        {
+          "idx": 18,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 1
+        },
+        {
+          "idx": 19,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 0
+        },
+        {
+          "idx": 20,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 2
+        },
+        {
+          "idx": 21,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 3
+        },
+        {
+          "idx": 22,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 2
+        },
+        {
+          "idx": 23,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 1
+        },
+        {
+          "idx": 24,
+          "bomb": false,
+          "revealed": false,
+          "flagged": false,
+          "adj": 0
         }
       ],
-      "maxGuesses": 6,
+      "flagMode": false,
       "starterId": "1192487598342541459",
       "starterTag": "_the.one.piece_",
       "channelId": "1407468156796145666",
-      "startedAt": 1777492785393,
+      "startedAt": 1777536023799,
       "finished": false
     }
   }

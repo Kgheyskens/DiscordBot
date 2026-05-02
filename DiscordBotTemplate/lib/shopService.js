@@ -1,9 +1,9 @@
 const path = require('path');
 const { readJson, writeJson } = require('./jsonStore');
-const { getBalance, subtractBalance } = require('./crownService');
+const { getBalance, subtractBalance } = require('./coinService');
 
 const shopFile = path.join(__dirname, '..', 'data', 'shopItems.json');
-const crownsFile = path.join(__dirname, '..', 'data', 'crowns.json');
+const coinsFile = path.join(__dirname, '..', 'data', 'coins.json');
 
 const VALID_TYPES = new Set(['role', 'xp', 'custom']);
 
@@ -34,6 +34,9 @@ function addItem(guildId, item) {
 	if (!Number.isInteger(item.price) || item.price <= 0) {
 		return { error: 'Prijs moet een positief geheel getal zijn.' };
 	}
+	if (item.currency && item.currency !== 'coins' && item.currency !== 'kroontjes') {
+		return { error: 'Currency moet "coins" of "kroontjes" zijn.' };
+	}
 	if (item.type === 'role' && !item.payload) {
 		return { error: 'Een role-item heeft een role ID nodig als payload.' };
 	}
@@ -48,6 +51,7 @@ function addItem(guildId, item) {
 		type: item.type,
 		name: item.name.slice(0, 80),
 		price: item.price,
+		currency: item.currency || 'coins',
 		payload: item.payload,
 		description: (item.description || '').slice(0, 200),
 	};
@@ -76,13 +80,13 @@ function purchaseItem({ guildId, userId, itemId }) {
 	const item = findItem(guildId, itemId);
 	if (!item) return { error: 'Item niet gevonden.' };
 
-	const balance = getBalance(crownsFile, guildId, userId);
+	const balance = getBalance(coinsFile, guildId, userId);
 	if (balance < item.price) {
-		return { error: `Je hebt ${item.price} kroontjes nodig maar hebt er ${balance}.` };
+		return { error: `Je hebt ${item.price} coins nodig maar hebt er ${balance}.` };
 	}
 
-	subtractBalance(crownsFile, guildId, userId, item.price);
-	return { success: true, item, newBalance: getBalance(crownsFile, guildId, userId) };
+	subtractBalance(coinsFile, guildId, userId, item.price);
+	return { success: true, item, newBalance: getBalance(coinsFile, guildId, userId) };
 }
 
 module.exports = {

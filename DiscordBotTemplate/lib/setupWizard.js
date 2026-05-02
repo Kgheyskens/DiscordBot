@@ -22,6 +22,8 @@ const {
 	setCounting,
 	setMinigame,
 	setCrownshop,
+	setChallenge,
+	setHallOfFame,
 } = require('./guildSettings');
 const {
 	getRule,
@@ -49,6 +51,9 @@ const CHANNEL_KEYS = [
 	{ key: 'twitch', label: 'Twitch channel' },
 	{ key: 'ticketCategory', label: 'Ticket category', categoryOnly: true },
 	{ key: 'ticketPanel', label: 'Ticket panel channel' },
+	{ key: 'modlog', label: 'Mod-log channel' },
+	{ key: 'challenge', label: 'Daily challenge channel' },
+	{ key: 'halloffame', label: 'Hall of Fame channel' },
 ];
 
 const ROLE_KEYS = [
@@ -198,6 +203,16 @@ async function handleMenu(interaction, target) {
 
 	if (target === 'crownshop') {
 		await showCrownshopMenu(interaction);
+		return;
+	}
+
+	if (target === 'challenge') {
+		await showChallengeMenu(interaction);
+		return;
+	}
+
+	if (target === 'halloffame') {
+		await showHallOfFameMenu(interaction);
 		return;
 	}
 
@@ -773,6 +788,146 @@ async function handleCrownshopModal(interaction) {
 	}
 }
 
+async function showChallengeMenu(interaction) {
+	const settings = getSettings(interaction.guildId);
+	const c = settings.challenge || {};
+	const channelId = settings.channels?.challenge;
+
+	const embed = new EmbedBuilder()
+		.setColor(0xb40f0f)
+		.setTitle('Daily Challenge')
+		.setDescription([
+			`Status: ${c.enabled ? '✅ aan' : '❌ uit'}`,
+			`Kanaal: ${channelId ? `<#${channelId}>` : '_niet ingesteld (zet via Channels → Daily challenge channel)_'}`,
+			`Tijdstip: **${c.postHour ?? 9}:00** lokale tijd`,
+			`Beloning: **${c.rewardKroontjes ?? 10} kroontjes** voor de eerste juiste antwoord`,
+			`Eigen puzzels: **${(c.customPuzzles || []).length}** (gebruik /challenge add)`,
+		].join('\n'));
+
+	const buttons = new ActionRowBuilder().addComponents(
+		new ButtonBuilder().setCustomId('setup:challenge:toggle').setLabel(c.enabled ? 'Uitzetten' : 'Aanzetten').setStyle(c.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+		new ButtonBuilder().setCustomId('setup:challenge:hour').setLabel('Tijdstip').setStyle(ButtonStyle.Primary),
+		new ButtonBuilder().setCustomId('setup:challenge:reward').setLabel('Beloning').setStyle(ButtonStyle.Primary),
+	);
+
+	const payload = { embeds: [embed], components: [buttons, backRow()] };
+	if (interaction.update) await interaction.update(payload).catch(() => null);
+	else await interaction.reply({ ...payload, flags: 64 }).catch(() => null);
+}
+
+async function handleChallengeButton(interaction, action) {
+	if (!isAdmin(interaction)) {
+		await interaction.reply({ content: 'Alleen admins.', flags: 64 });
+		return;
+	}
+	const settings = getSettings(interaction.guildId);
+	if (action === 'toggle') {
+		setChallenge(interaction.guildId, { enabled: !settings.challenge?.enabled });
+		await showChallengeMenu(interaction);
+		return;
+	}
+	if (action === 'hour') {
+		const modal = new ModalBuilder().setCustomId('setup:modal:challengeHour').setTitle('Tijdstip daily challenge');
+		modal.addComponents(new ActionRowBuilder().addComponents(
+			new TextInputBuilder().setCustomId('postHour').setLabel('Uur (0-23)').setStyle(TextInputStyle.Short).setValue(String(settings.challenge?.postHour ?? 9)).setRequired(true),
+		));
+		await interaction.showModal(modal);
+		return;
+	}
+	if (action === 'reward') {
+		const modal = new ModalBuilder().setCustomId('setup:modal:challengeReward').setTitle('Kroontjes-beloning');
+		modal.addComponents(new ActionRowBuilder().addComponents(
+			new TextInputBuilder().setCustomId('rewardKroontjes').setLabel('Aantal kroontjes voor winnaar').setStyle(TextInputStyle.Short).setValue(String(settings.challenge?.rewardKroontjes ?? 10)).setRequired(true),
+		));
+		await interaction.showModal(modal);
+	}
+}
+
+async function handleChallengeModal(interaction) {
+	const kind = interaction.customId.split(':')[2];
+	if (kind === 'challengeHour') {
+		const v = clampInt(interaction.fields.getTextInputValue('postHour'), 0, 23, 9);
+		setChallenge(interaction.guildId, { postHour: v });
+		await interaction.reply({ content: `Daily challenge wordt nu om **${v}:00** gepost.`, flags: 64 });
+		return;
+	}
+	if (kind === 'challengeReward') {
+		const v = clampInt(interaction.fields.getTextInputValue('rewardKroontjes'), 0, 1_000_000, 10);
+		setChallenge(interaction.guildId, { rewardKroontjes: v });
+		await interaction.reply({ content: `Beloning is nu **${v} kroontjes**.`, flags: 64 });
+	}
+}
+
+async function showHallOfFameMenu(interaction) {
+	const settings = getSettings(interaction.guildId);
+	const h = settings.hallOfFame || {};
+	const channelId = settings.channels?.halloffame;
+
+	const embed = new EmbedBuilder()
+		.setColor(0xb40f0f)
+		.setTitle('Hall of Fame')
+		.setDescription([
+			`Status: ${h.enabled ? '✅ aan' : '❌ uit'}`,
+			`Kanaal: ${channelId ? `<#${channelId}>` : '_niet ingesteld (zet via Channels → Hall of Fame channel)_'}`,
+			`Post: dag **${h.postDay ?? 1}** van de maand om **${h.postHour ?? 10}:00**`,
+			'',
+			'Toont elke maand de top-3 challenge-winnaars van de vorige maand.',
+		].join('\n'));
+
+	const buttons = new ActionRowBuilder().addComponents(
+		new ButtonBuilder().setCustomId('setup:halloffame:toggle').setLabel(h.enabled ? 'Uitzetten' : 'Aanzetten').setStyle(h.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+		new ButtonBuilder().setCustomId('setup:halloffame:day').setLabel('Dag van maand').setStyle(ButtonStyle.Primary),
+		new ButtonBuilder().setCustomId('setup:halloffame:hour').setLabel('Tijdstip').setStyle(ButtonStyle.Primary),
+	);
+
+	const payload = { embeds: [embed], components: [buttons, backRow()] };
+	if (interaction.update) await interaction.update(payload).catch(() => null);
+	else await interaction.reply({ ...payload, flags: 64 }).catch(() => null);
+}
+
+async function handleHallOfFameButton(interaction, action) {
+	if (!isAdmin(interaction)) {
+		await interaction.reply({ content: 'Alleen admins.', flags: 64 });
+		return;
+	}
+	const settings = getSettings(interaction.guildId);
+	if (action === 'toggle') {
+		setHallOfFame(interaction.guildId, { enabled: !settings.hallOfFame?.enabled });
+		await showHallOfFameMenu(interaction);
+		return;
+	}
+	if (action === 'day') {
+		const modal = new ModalBuilder().setCustomId('setup:modal:halloffameDay').setTitle('Dag van de maand');
+		modal.addComponents(new ActionRowBuilder().addComponents(
+			new TextInputBuilder().setCustomId('postDay').setLabel('Dag (1-28)').setStyle(TextInputStyle.Short).setValue(String(settings.hallOfFame?.postDay ?? 1)).setRequired(true),
+		));
+		await interaction.showModal(modal);
+		return;
+	}
+	if (action === 'hour') {
+		const modal = new ModalBuilder().setCustomId('setup:modal:halloffameHour').setTitle('Tijdstip Hall of Fame');
+		modal.addComponents(new ActionRowBuilder().addComponents(
+			new TextInputBuilder().setCustomId('postHour').setLabel('Uur (0-23)').setStyle(TextInputStyle.Short).setValue(String(settings.hallOfFame?.postHour ?? 10)).setRequired(true),
+		));
+		await interaction.showModal(modal);
+	}
+}
+
+async function handleHallOfFameModal(interaction) {
+	const kind = interaction.customId.split(':')[2];
+	if (kind === 'halloffameDay') {
+		const v = clampInt(interaction.fields.getTextInputValue('postDay'), 1, 28, 1);
+		setHallOfFame(interaction.guildId, { postDay: v });
+		await interaction.reply({ content: `Hall of Fame post nu op dag **${v}** van de maand.`, flags: 64 });
+		return;
+	}
+	if (kind === 'halloffameHour') {
+		const v = clampInt(interaction.fields.getTextInputValue('postHour'), 0, 23, 10);
+		setHallOfFame(interaction.guildId, { postHour: v });
+		await interaction.reply({ content: `Hall of Fame post nu om **${v}:00**.`, flags: 64 });
+	}
+}
+
 async function showRoleCatsList(interaction) {
 	const cats = listCategories(interaction.guildId);
 	const lines = cats.length
@@ -1040,6 +1195,8 @@ async function dispatch(interaction) {
 			if (section === 'rolecat') { await handleRoleCatInteraction(interaction); return true; }
 			if (section === 'minigame') { await handleMinigameInteraction(interaction); return true; }
 			if (section === 'crownshop') { await handleCrownshopButton(interaction, action); return true; }
+			if (section === 'challenge') { await handleChallengeButton(interaction, action); return true; }
+			if (section === 'halloffame') { await handleHallOfFameButton(interaction, action); return true; }
 		}
 		if (interaction.isStringSelectMenu()) {
 			if (section === 'select') { await handleSelect(interaction); return true; }
@@ -1068,6 +1225,14 @@ async function dispatch(interaction) {
 			}
 			if (section === 'modal' && (action === 'crownshopXp' || action === 'crownshopSaveCost')) {
 				await handleCrownshopModal(interaction);
+				return true;
+			}
+			if (section === 'modal' && (action === 'challengeHour' || action === 'challengeReward')) {
+				await handleChallengeModal(interaction);
+				return true;
+			}
+			if (section === 'modal' && (action === 'halloffameDay' || action === 'halloffameHour')) {
+				await handleHallOfFameModal(interaction);
 				return true;
 			}
 			await handleModalSubmit(interaction);

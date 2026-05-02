@@ -31,12 +31,12 @@ const SECTIONS = {
 	},
 	economy: {
 		title: '💰 Economy',
-		description: 'Verdien en spendeer kroontjes.',
+		description: 'Twee currencies: 🪙 **coins** (economy) en 👑 **kroontjes** (minigames + random spawn).',
 		fields: [
-			{ name: 'Verdienen', value: '/work • /daily • kroontjes verschijnen ook willekeurig in chat' },
-			{ name: 'Spelen', value: '/gamble • /blackjack • /rob • /pay' },
-			{ name: 'Stats', value: '/balance • /leaderboard' },
-			{ name: 'Shop', value: '/shop view/buy/add/remove • /crownshop buyxp/buysave/saves' },
+			{ name: 'Coins verdienen', value: '/work • /daily • /rob • /pay • /gamble (coinflip/roulette/blackjack)' },
+			{ name: 'Kroontjes verdienen', value: 'Minigames winnen • kroontjes verschijnen willekeurig in chat (claim-knop)' },
+			{ name: 'Stats', value: '/balance (beide) • /leaderboard coins/kroontjes/levels' },
+			{ name: 'Shops', value: '/shop view/buy/add/remove (coins) • /crownshop buyxp/buysave/saves (kroontjes)' },
 		],
 	},
 	minigames: {
@@ -72,6 +72,17 @@ const SECTIONS = {
 			{ name: 'Memes', value: '/getmeme' },
 			{ name: 'Twitch', value: '/twitch — koppel een streamer voor live notifications.' },
 			{ name: 'Embeds', value: '/redembed — plaats een rode embed met titel + beschrijving' },
+			{ name: 'AFK', value: '/afk [reden] • /afkcheck [user] — bekijk hoe lang iemand AFK is' },
+		],
+	},
+	challenge: {
+		title: '🧩 Daily Challenge',
+		description: 'Elke ochtend een puzzel of raadsel — eerste die het oplost wint kroontjes.',
+		fields: [
+			{ name: 'Spelen', value: 'Antwoord gewoon in het challenge-kanaal als de bot een vraag post.' },
+			{ name: 'Beheer (admin)', value: '/challenge add • /challenge remove • /challenge list • /challenge force' },
+			{ name: 'Setup', value: '/setup → Daily Challenge — zet aan, kies kanaal, kies tijdstip + beloning.' },
+			{ name: 'Hall of Fame', value: 'Maandelijks top-3 winnaars in /setup → Hall of Fame kanaal.' },
 		],
 	},
 };
@@ -102,6 +113,7 @@ function buildButtons(active) {
 		new ActionRowBuilder().addComponents(
 			make('levels', '⭐ Levels'),
 			make('tickets', '🎫 Tickets'),
+			make('challenge', '🧩 Challenge'),
 			make('misc', '🧰 Misc'),
 		),
 	];

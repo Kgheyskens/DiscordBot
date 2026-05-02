@@ -135,7 +135,7 @@ function buildWordleEmbed(state) {
 			if (m === 'present') return '🟨';
 			return '⬛';
 		}).join('');
-		return `${emojiRow}  \`${word.toUpperCase()}\``;
+		return emojiRow;
 	});
 	const empty = '⬜'.repeat(state.answer.length);
 	while (rows.length < state.maxGuesses) rows.push(empty);

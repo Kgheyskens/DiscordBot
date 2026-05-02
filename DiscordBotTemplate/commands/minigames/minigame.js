@@ -115,9 +115,9 @@ module.exports = {
 		}
 
 		if (game === 'minesweeper') {
-			const width = 5;
-			const height = 5;
-			const bombs = 5;
+			const width = 4;
+			const height = 4;
+			const bombs = 4;
 			const cells = generateMinesweeperBoard(width, height, bombs);
 			const gameId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 			const state = {

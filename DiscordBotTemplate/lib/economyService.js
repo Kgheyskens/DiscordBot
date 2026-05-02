@@ -4,11 +4,11 @@ const {
 	addBalance,
 	getBalance,
 	subtractBalance,
-	getCrownConfig,
-} = require('./crownService');
+} = require('./coinService');
+const { getCrownConfig } = require('./crownService');
 const { getSettings } = require('./guildSettings');
 
-const crownsFile = path.join(__dirname, '..', 'data', 'crowns.json');
+const coinsFile = path.join(__dirname, '..', 'data', 'coins.json');
 const economyTimersFile = path.join(__dirname, '..', 'data', 'economyTimers.json');
 
 const workJobs = [
@@ -74,7 +74,7 @@ function setUserTimer(timersFile, guildId, userId, key, value) {
 	return userTimers;
 }
 
-function claimWorkReward({ crownsFile: file, crownsConfigFile, timersFile, guildId, userId }) {
+function claimWorkReward({ coinsFile: file, crownsConfigFile, timersFile, guildId, userId }) {
 	if (!isEconomyEnabled(guildId, crownsConfigFile)) {
 		return { disabled: true };
 	}
@@ -98,7 +98,7 @@ function claimWorkReward({ crownsFile: file, crownsConfigFile, timersFile, guild
 	return { success: true, job, amount, nextCooldownMs: cooldownMs };
 }
 
-function claimDailyReward({ crownsFile: file, crownsConfigFile, timersFile, guildId, userId }) {
+function claimDailyReward({ coinsFile: file, crownsConfigFile, timersFile, guildId, userId }) {
 	if (!isEconomyEnabled(guildId, crownsConfigFile)) {
 		return { disabled: true };
 	}
@@ -121,7 +121,7 @@ function claimDailyReward({ crownsFile: file, crownsConfigFile, timersFile, guil
 	return { success: true, amount, nextCooldownMs: cooldownMs };
 }
 
-function transfer({ crownsFile: file, guildId, fromUserId, toUserId, amount }) {
+function transfer({ coinsFile: file, guildId, fromUserId, toUserId, amount }) {
 	if (!Number.isInteger(amount) || amount <= 0) {
 		return { error: 'Bedrag moet groter zijn dan 0.' };
 	}
@@ -133,7 +133,7 @@ function transfer({ crownsFile: file, guildId, fromUserId, toUserId, amount }) {
 	const taxPercent = Math.max(0, Math.min(100, econ.payTaxPercent || 0));
 	const fromBalance = getBalance(file, guildId, fromUserId);
 	if (fromBalance < amount) {
-		return { error: `Je hebt maar ${fromBalance} kroontjes.` };
+		return { error: `Je hebt maar ${fromBalance} coins.` };
 	}
 
 	const tax = Math.floor((amount * taxPercent) / 100);
@@ -151,7 +151,7 @@ function transfer({ crownsFile: file, guildId, fromUserId, toUserId, amount }) {
 	};
 }
 
-function attemptRob({ crownsFile: file, timersFile, guildId, robberId, victimId }) {
+function attemptRob({ coinsFile: file, timersFile, guildId, robberId, victimId }) {
 	if (robberId === victimId) {
 		return { error: 'Je kunt jezelf niet beroven.' };
 	}
@@ -167,12 +167,12 @@ function attemptRob({ crownsFile: file, timersFile, guildId, robberId, victimId 
 
 	const victimBalance = getBalance(file, guildId, victimId);
 	if (victimBalance < econ.robMinVictimBalance) {
-		return { error: `Het slachtoffer heeft te weinig kroontjes (minstens ${econ.robMinVictimBalance} nodig).` };
+		return { error: `Het slachtoffer heeft te weinig coins (minstens ${econ.robMinVictimBalance} nodig).` };
 	}
 
 	const robberBalance = getBalance(file, guildId, robberId);
 	if (robberBalance < econ.robMinVictimBalance) {
-		return { error: `Je hebt zelf minstens ${econ.robMinVictimBalance} kroontjes nodig om te beroven.` };
+		return { error: `Je hebt zelf minstens ${econ.robMinVictimBalance} coins nodig om te beroven.` };
 	}
 
 	const victimTimers = getUserTimers(timersFile, guildId, victimId);
@@ -210,7 +210,7 @@ function attemptRob({ crownsFile: file, timersFile, guildId, robberId, victimId 
 	};
 }
 
-function getLeaderboard({ crownsFile: file, guildId, limit = 10 }) {
+function getLeaderboard({ coinsFile: file, guildId, limit = 10 }) {
 	const all = readJson(file, {});
 	const guild = all[guildId] || {};
 	return Object.entries(guild)
@@ -245,4 +245,5 @@ module.exports = {
 	getUserTimers,
 	setUserTimer,
 	economyTimersFile,
+	coinsFile,
 };

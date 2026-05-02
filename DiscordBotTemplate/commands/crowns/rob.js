@@ -3,17 +3,17 @@ const { EmbedBuilder, SlashCommandBuilder } = require('discord.js');
 const { attemptRob, formatDuration, isEconomyEnabled } = require('../../lib/economyService');
 
 const economyTimersFile = path.join(__dirname, '..', '..', 'data', 'economyTimers.json');
-const crownsFile = path.join(__dirname, '..', '..', 'data', 'crowns.json');
+const coinsFile = path.join(__dirname, '..', '..', 'data', 'coins.json');
 const crownsConfigFile = path.join(__dirname, '..', '..', 'data', 'crownsConfig.json');
 
 module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('rob')
-		.setDescription('Probeer kroontjes van een ander lid te stelen')
+		.setDescription('Probeer coins van een ander lid te stelen')
 		.addUserOption(option => option.setName('user').setDescription('Wie wil je beroven?').setRequired(true)),
 	async execute(interaction) {
 		if (!isEconomyEnabled(interaction.guildId, crownsConfigFile)) {
-			await interaction.reply({ content: 'Het kroontjessysteem staat uit.', flags: 64 });
+			await interaction.reply({ content: 'Het economy-systeem staat uit.', flags: 64 });
 			return;
 		}
 
@@ -24,7 +24,7 @@ module.exports = {
 		}
 
 		const result = attemptRob({
-			crownsFile,
+			coinsFile,
 			timersFile: economyTimersFile,
 			guildId: interaction.guildId,
 			robberId: interaction.user.id,
@@ -45,7 +45,7 @@ module.exports = {
 			const embed = new EmbedBuilder()
 				.setColor(0xb40f0f)
 				.setTitle('Geslaagde overval')
-				.setDescription(`<@${interaction.user.id}> heeft **${result.stolen} kroontjes** gestolen van <@${target.id}>.`)
+				.setDescription(`<@${interaction.user.id}> heeft **${result.stolen} coins** gestolen van <@${target.id}>.`)
 				.addFields(
 					{ name: 'Jouw balans', value: `${result.robberBalance}`, inline: true },
 					{ name: 'Slachtoffer balans', value: `${result.victimBalance}`, inline: true },
@@ -57,7 +57,7 @@ module.exports = {
 		const embed = new EmbedBuilder()
 			.setColor(0x555555)
 			.setTitle('Overval mislukt')
-			.setDescription(`<@${interaction.user.id}> werd betrapt en betaalt **${result.fee} kroontjes** boete.`)
+			.setDescription(`<@${interaction.user.id}> werd betrapt en betaalt **${result.fee} coins** boete.`)
 			.addFields({ name: 'Jouw balans', value: `${result.robberBalance}`, inline: true });
 		await interaction.reply({ embeds: [embed] });
 	},

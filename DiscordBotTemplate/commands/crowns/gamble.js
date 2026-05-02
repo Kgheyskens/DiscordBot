@@ -6,7 +6,7 @@ const {
 	EmbedBuilder,
 	SlashCommandBuilder,
 } = require('discord.js');
-const { addBalance, getBalance, subtractBalance } = require('../../lib/crownService');
+const { addBalance, getBalance, subtractBalance } = require('../../lib/coinService');
 const { isEconomyEnabled } = require('../../lib/economyService');
 const {
 	createDeck,
@@ -18,7 +18,7 @@ const {
 } = require('../../lib/blackjackService');
 const { readJson, writeJson } = require('../../lib/jsonStore');
 
-const crownsFile = path.join(__dirname, '..', '..', 'data', 'crowns.json');
+const coinsFile = path.join(__dirname, '..', '..', 'data', 'coins.json');
 const crownsConfigFile = path.join(__dirname, '..', '..', 'data', 'crownsConfig.json');
 const blackjackGamesFile = path.join(__dirname, '..', '..', 'data', 'blackjackGames.json');
 
@@ -44,7 +44,7 @@ function getRouletteMultiplier(choice) {
 }
 
 function formatCurrency(amount) {
-	return `${amount} kroontjes`;
+	return `${amount} coins`;
 }
 
 function buildCountdownText(secondsLeft) {
@@ -145,20 +145,20 @@ async function settleBlackjackGame(interaction, state, reason) {
 	if (playerTotal > 21) {
 		resultText = `Je bent busted en verliest ${formatCurrency(state.bet)}.`;
 	} else if (dealerBust) {
-		addBalance(crownsFile, interaction.guildId, interaction.user.id, state.bet * 2);
+		addBalance(coinsFile, interaction.guildId, interaction.user.id, state.bet * 2);
 		resultText = `Dealer is busted. Je wint ${formatCurrency(state.bet)}!`;
 	} else if (playerBlackjack && !dealerBlackjack) {
-		addBalance(crownsFile, interaction.guildId, interaction.user.id, Math.ceil(state.bet * 2.5));
-		resultText = `Blackjack! Je wint extra veel en krijgt ${Math.ceil(state.bet * 2.5)} kroontjes terug.`;
+		addBalance(coinsFile, interaction.guildId, interaction.user.id, Math.ceil(state.bet * 2.5));
+		resultText = `Blackjack! Je wint extra veel en krijgt ${Math.ceil(state.bet * 2.5)} coins terug.`;
 	} else if (dealerBlackjack && !playerBlackjack) {
 		resultText = `Dealer heeft blackjack. Je verliest ${formatCurrency(state.bet)}.`;
 	} else if (playerTotal > dealerTotal) {
-		addBalance(crownsFile, interaction.guildId, interaction.user.id, state.bet * 2);
+		addBalance(coinsFile, interaction.guildId, interaction.user.id, state.bet * 2);
 		resultText = `Je hebt gewonnen met ${playerTotal} tegen ${dealerTotal}.`;
 	} else if (playerTotal < dealerTotal) {
 		resultText = `Dealer wint met ${dealerTotal} tegen ${playerTotal}. Je verliest ${formatCurrency(state.bet)}.`;
 	} else {
-		addBalance(crownsFile, interaction.guildId, interaction.user.id, state.bet);
+		addBalance(coinsFile, interaction.guildId, interaction.user.id, state.bet);
 		resultText = `Gelijkspel met ${playerTotal}. Je krijgt je inzet terug.`;
 	}
 
@@ -177,12 +177,12 @@ async function settleBlackjackGame(interaction, state, reason) {
 module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('gamble')
-		.setDescription('Speel gokspellen met kroontjes')
+		.setDescription('Speel gokspellen met coins')
 		.addSubcommand(subcommand =>
 			subcommand
 				.setName('coinflip')
 				.setDescription('Gooi een munt en kies een kant')
-				.addIntegerOption(option => option.setName('amount').setDescription('Hoeveel kroontjes je inzet').setRequired(true))
+				.addIntegerOption(option => option.setName('amount').setDescription('Hoeveel coins je inzet').setRequired(true))
 				.addStringOption(option =>
 					option
 						.setName('choice')
@@ -197,7 +197,7 @@ module.exports = {
 				subcommand
 					.setName('roulette')
 					.setDescription('Speel roulette met een kleur')
-					.addIntegerOption(option => option.setName('amount').setDescription('Hoeveel kroontjes je inzet').setRequired(true))
+					.addIntegerOption(option => option.setName('amount').setDescription('Hoeveel coins je inzet').setRequired(true))
 					.addStringOption(option =>
 						option
 							.setName('choice')
@@ -213,12 +213,12 @@ module.exports = {
 				subcommand
 					.setName('blackjack')
 					.setDescription('Speel blackjack tegen de dealer')
-					.addIntegerOption(option => option.setName('amount').setDescription('Hoeveel kroontjes je inzet').setRequired(true))),
+					.addIntegerOption(option => option.setName('amount').setDescription('Hoeveel coins je inzet').setRequired(true))),
 	async execute(interaction) {
 		const subcommand = interaction.options.getSubcommand();
 
 		if (!isEconomyEnabled(interaction.guildId, crownsConfigFile)) {
-			await interaction.reply({ content: 'Het kroontjessysteem staat uit. Een admin moet het inschakelen via /setup.', flags: 64 });
+			await interaction.reply({ content: 'Het economy-systeem staat uit. Een admin moet het inschakelen via /setup.', flags: 64 });
 			return;
 		}
 
@@ -227,14 +227,14 @@ module.exports = {
 		if (subcommand === 'coinflip') {
 			const amount = interaction.options.getInteger('amount');
 			const choice = interaction.options.getString('choice');
-			const balance = getBalance(crownsFile, interaction.guildId, interaction.user.id);
+			const balance = getBalance(coinsFile, interaction.guildId, interaction.user.id);
 
 			if (balance < amount) {
-				await interaction.reply({ content: `Je hebt maar ${balance} kroontjes.`, flags: 64 });
+				await interaction.reply({ content: `Je hebt maar ${balance} coins.`, flags: 64 });
 				return;
 			}
 
-			subtractBalance(crownsFile, interaction.guildId, interaction.user.id, amount);
+			subtractBalance(coinsFile, interaction.guildId, interaction.user.id, amount);
 			const initialCoinContent = `<@${interaction.user.id}> heeft ${formatCurrency(amount)} ingezet — ${buildCountdownText(10)}`;
 			const replyMessage = await interaction.editReply({
 				content: initialCoinContent,
@@ -244,7 +244,7 @@ module.exports = {
 			const result = Math.random() < 0.5 ? 'kop' : 'munt';
 			const won = result === choice;
 			if (won) {
-				addBalance(crownsFile, interaction.guildId, interaction.user.id, amount * 2);
+				addBalance(coinsFile, interaction.guildId, interaction.user.id, amount * 2);
 			}
 
 			await runResultCountdown(interaction.channel, replyMessage.id, replyMessage, 'Coinflip', () => (
@@ -258,14 +258,14 @@ module.exports = {
 		if (subcommand === 'roulette') {
 			const amount = interaction.options.getInteger('amount');
 			const choice = interaction.options.getString('choice');
-			const balance = getBalance(crownsFile, interaction.guildId, interaction.user.id);
+			const balance = getBalance(coinsFile, interaction.guildId, interaction.user.id);
 
 			if (balance < amount) {
-				await interaction.reply({ content: `Je hebt maar ${balance} kroontjes.`, flags: 64 });
+				await interaction.reply({ content: `Je hebt maar ${balance} coins.`, flags: 64 });
 				return;
 			}
 
-			subtractBalance(crownsFile, interaction.guildId, interaction.user.id, amount);
+			subtractBalance(coinsFile, interaction.guildId, interaction.user.id, amount);
 			const initialRouletteContent = `<@${interaction.user.id}> heeft ${formatCurrency(amount)} ingezet — ${buildCountdownText(10)}`;
 			const replyMessage = await interaction.editReply({
 				content: initialRouletteContent,
@@ -276,7 +276,7 @@ module.exports = {
 			const won = result === choice;
 			const multiplier = getRouletteMultiplier(choice);
 			if (won) {
-				addBalance(crownsFile, interaction.guildId, interaction.user.id, amount * multiplier);
+				addBalance(coinsFile, interaction.guildId, interaction.user.id, amount * multiplier);
 			}
 
 			await runResultCountdown(interaction.channel, replyMessage.id, replyMessage, 'Roulette', () => (
@@ -289,14 +289,14 @@ module.exports = {
 
 		if (subcommand === 'blackjack') {
 			const amount = interaction.options.getInteger('amount');
-			const balance = getBalance(crownsFile, interaction.guildId, interaction.user.id);
+			const balance = getBalance(coinsFile, interaction.guildId, interaction.user.id);
 
 			if (balance < amount) {
-				await interaction.reply({ content: `Je hebt maar ${balance} kroontjes.`, flags: 64 });
+				await interaction.reply({ content: `Je hebt maar ${balance} coins.`, flags: 64 });
 				return;
 			}
 
-			subtractBalance(crownsFile, interaction.guildId, interaction.user.id, amount);
+			subtractBalance(coinsFile, interaction.guildId, interaction.user.id, amount);
 
 			const gameId = createGameId();
 			const state = {

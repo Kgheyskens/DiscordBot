@@ -11,6 +11,9 @@ const DEFAULT_SETTINGS = {
 		twitch: null,
 		ticketCategory: null,
 		ticketPanel: null,
+		modlog: null,
+		challenge: null,
+		halloffame: null,
 	},
 	roles: {
 		ticketSupport: null,
@@ -47,6 +50,17 @@ const DEFAULT_SETTINGS = {
 	},
 	crownshop: {
 		xpPerCrown: 25,
+	},
+	challenge: {
+		enabled: false,
+		postHour: 9,
+		rewardKroontjes: 10,
+		customPuzzles: [],
+	},
+	hallOfFame: {
+		enabled: false,
+		postDay: 1,
+		postHour: 10,
 	},
 };
 
@@ -113,6 +127,14 @@ function setCrownshop(guildId, partial) {
 	return saveSettings(guildId, { crownshop: partial || {} });
 }
 
+function setChallenge(guildId, partial) {
+	return saveSettings(guildId, { challenge: partial || {} });
+}
+
+function setHallOfFame(guildId, partial) {
+	return saveSettings(guildId, { hallOfFame: partial || {} });
+}
+
 function resetSection(guildId, section) {
 	if (!DEFAULT_SETTINGS[section]) return null;
 	const all = readAll();
@@ -135,5 +157,7 @@ module.exports = {
 	setCounting,
 	setMinigame,
 	setCrownshop,
+	setChallenge,
+	setHallOfFame,
 	resetSection,
 };

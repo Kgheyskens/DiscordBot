@@ -36,14 +36,19 @@ const {
 const getMeme = require('./commands/getMeme/getMeme');
 const { readJson, writeJson } = require('./lib/jsonStore');
 const { processLevelGain, getRequiredXp, resolveLevelsChannel } = require('./lib/levelingService');
-const { addBalance, getBalance, getCrownConfig } = require('./lib/crownService');
+const { addBalance: addCrownBalance, getBalance: getCrownBalance, getCrownConfig } = require('./lib/crownService');
+const { addBalance: addCoinBalance, getBalance: getCoinBalance } = require('./lib/coinService');
 const { getSettings } = require('./lib/guildSettings');
 const { checkCommandAllowed } = require('./lib/commandRestrictions');
 const { migrateGuildConfigs } = require('./lib/migrateConfigs');
 const setupWizard = require('./lib/setupWizard');
 const roleCategoryService = require('./lib/roleCategoryService');
 const minigameService = require('./lib/minigameService');
+const challengeService = require('./lib/challengeService');
+const { buildChallengeEmbed } = require('./commands/challenge/challenge');
 const menuCommand = require('./commands/menu/menu');
+const redembedCommand = require('./commands/redembed/redembed');
+const afkService = require('./lib/afkService');
 const { isEconomyEnabled } = require('./lib/economyService');
 const {
 	drawCard,
@@ -63,6 +68,7 @@ const welcomeConfigFile = path.join(__dirname, 'data', 'welcomeConfig.json');
 const countingConfigFile = path.join(__dirname, 'data', 'countingConfig.json');
 const crownsConfigFile = path.join(__dirname, 'data', 'crownsConfig.json');
 const crownsFile = path.join(__dirname, 'data', 'crowns.json');
+const coinsFile = path.join(__dirname, 'data', 'coins.json');
 const crownsClaimsFile = path.join(__dirname, 'data', 'crownsClaims.json');
 const blackjackGamesFile = path.join(__dirname, 'data', 'blackjackGames.json');
 const ticketPanelsFile = path.join(__dirname, 'data', 'ticketPanels.json');
@@ -362,6 +368,116 @@ async function handleMinigameMessage(message) {
 	return false;
 }
 
+async function handleChallengeMessage(message) {
+	const settings = getSettings(message.guild.id);
+	const challengeChannelId = settings.channels?.challenge;
+	if (!challengeChannelId || message.channel.id !== challengeChannelId) return false;
+
+	const active = challengeService.getActive(message.guild.id);
+	if (!active || active.solved) return false;
+	if (active.date !== challengeService.todayKey()) return false;
+
+	const result = challengeService.tryAnswer(message.guild.id, message.author.id, message.content);
+	if (!result.matched) return false;
+
+	const reward = result.reward || 0;
+	const replyEmbed = new EmbedBuilder()
+		.setColor(0x57f287)
+		.setTitle('🎉 Opgelost!')
+		.setDescription(`<@${message.author.id}> had het juiste antwoord: **${result.answer}**.${reward > 0 ? `\n\nBeloning: **${reward} kroontjes** 👑` : ''}`);
+
+	if (active.messageId) {
+		const original = await message.channel.messages.fetch(active.messageId).catch(() => null);
+		if (original) {
+			const updated = new EmbedBuilder()
+				.setColor(0x57f287)
+				.setTitle('🧩 Daily Challenge — opgelost')
+				.setDescription(`**${active.question}**\n\n✅ Antwoord: **${result.answer}**\n🏆 Winnaar: <@${message.author.id}>`)
+				.setFooter({ text: `Datum: ${active.date}` });
+			await original.edit({ embeds: [updated] }).catch(() => null);
+		}
+	}
+	await message.reply({ embeds: [replyEmbed], allowedMentions: { repliedUser: false } }).catch(() => null);
+	return true;
+}
+
+async function postDailyChallenge(guild) {
+	const settings = getSettings(guild.id);
+	const channelId = settings.channels?.challenge;
+	if (!channelId) return;
+	const channel = await guild.channels.fetch(channelId).catch(() => null);
+	if (!channel?.isTextBased()) return;
+
+	const state = challengeService.startChallenge(guild.id, channelId);
+	if (!state) return;
+	const sent = await channel.send({ embeds: [buildChallengeEmbed(state)] }).catch(() => null);
+	if (sent) challengeService.attachMessage(guild.id, sent.id);
+}
+
+async function postHallOfFame(guild) {
+	const now = new Date();
+	const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+	const month = challengeService.monthKey(prev);
+	const top = challengeService.getTopWinners(guild.id, month, 3);
+
+	const settings = getSettings(guild.id);
+	const channelId = settings.channels?.halloffame;
+	if (!channelId) return;
+	const channel = await guild.channels.fetch(channelId).catch(() => null);
+	if (!channel?.isTextBased()) return;
+
+	const monthLabel = prev.toLocaleString('nl-NL', { month: 'long', year: 'numeric' });
+	const lines = top.length === 0
+		? ['Geen winnaars deze maand.']
+		: top.map((w, i) => `${['🥇', '🥈', '🥉'][i]} <@${w.userId}> — **${w.wins}** challenge${w.wins === 1 ? '' : 's'} gewonnen`);
+
+	const embed = new EmbedBuilder()
+		.setColor(0xffd700)
+		.setTitle(`🏆 Hall of Fame — ${monthLabel}`)
+		.setDescription(lines.join('\n'))
+		.setFooter({ text: 'Doe mee aan de daily challenges om volgende maand op deze lijst te staan!' });
+
+	await channel.send({ embeds: [embed] }).catch(() => null);
+}
+
+async function checkSchedules() {
+	try {
+		const halloffameStateFile = path.join(__dirname, 'data', 'halloffameState.json');
+		const hofState = readJson(halloffameStateFile, {});
+		const now = new Date();
+		const todayDate = challengeService.todayKey(now);
+		const hour = now.getHours();
+		const day = now.getDate();
+
+		for (const [, guild] of client.guilds.cache) {
+			const settings = getSettings(guild.id);
+
+			if (settings.challenge?.enabled && settings.channels?.challenge) {
+				const active = challengeService.getActive(guild.id);
+				const postHour = Number(settings.challenge.postHour) || 9;
+				if (hour === postHour && (!active || active.date !== todayDate)) {
+					await postDailyChallenge(guild);
+				}
+			}
+
+			if (settings.hallOfFame?.enabled && settings.channels?.halloffame) {
+				const postDay = Number(settings.hallOfFame.postDay) || 1;
+				const postHour = Number(settings.hallOfFame.postHour) || 10;
+				if (day === postDay && hour === postHour) {
+					const lastPosted = hofState[guild.id]?.lastPostedDate;
+					if (lastPosted !== todayDate) {
+						await postHallOfFame(guild);
+						hofState[guild.id] = { lastPostedDate: todayDate };
+						writeJson(halloffameStateFile, hofState);
+					}
+				}
+			}
+		}
+	} catch (err) {
+		console.error('checkSchedules failed:', err);
+	}
+}
+
 async function maybeSpawnCrown(message) {
 	if (isTicketChannel(message.channel)) {
 		return;
@@ -529,22 +645,22 @@ async function settleBlackjackState(interaction, state, reason) {
 
 	let resultText = 'Gelijkspel.';
 	if (playerTotal > 21) {
-		resultText = `Je bent busted en verliest ${state.bet} kroontjes.`;
+		resultText = `Je bent busted en verliest ${state.bet} coins.`;
 	} else if (dealerBust) {
-		addBalance(crownsFile, interaction.guildId, interaction.user.id, state.bet * 2);
-		resultText = `Dealer is busted. Je wint ${state.bet} kroontjes.`;
+		addCoinBalance(coinsFile, interaction.guildId, interaction.user.id, state.bet * 2);
+		resultText = `Dealer is busted. Je wint ${state.bet} coins.`;
 	} else if (playerBlackjack && !dealerBlackjack) {
-		addBalance(crownsFile, interaction.guildId, interaction.user.id, Math.ceil(state.bet * 2.5));
-		resultText = `Blackjack! Je wint ${Math.ceil(state.bet * 2.5)} kroontjes.`;
+		addCoinBalance(coinsFile, interaction.guildId, interaction.user.id, Math.ceil(state.bet * 2.5));
+		resultText = `Blackjack! Je wint ${Math.ceil(state.bet * 2.5)} coins.`;
 	} else if (dealerBlackjack && !playerBlackjack) {
-		resultText = `Dealer heeft blackjack. Je verliest ${state.bet} kroontjes.`;
+		resultText = `Dealer heeft blackjack. Je verliest ${state.bet} coins.`;
 	} else if (playerTotal > dealerTotal) {
-		addBalance(crownsFile, interaction.guildId, interaction.user.id, state.bet * 2);
+		addCoinBalance(coinsFile, interaction.guildId, interaction.user.id, state.bet * 2);
 		resultText = `Je hebt gewonnen met ${playerTotal} tegen ${dealerTotal}.`;
 	} else if (playerTotal < dealerTotal) {
 		resultText = `Dealer wint met ${dealerTotal} tegen ${playerTotal}.`;
 	} else {
-		addBalance(crownsFile, interaction.guildId, interaction.user.id, state.bet);
+		addCoinBalance(coinsFile, interaction.guildId, interaction.user.id, state.bet);
 		resultText = `Gelijkspel met ${playerTotal}. Je krijgt je inzet terug.`;
 	}
 
@@ -766,11 +882,35 @@ client.once(Events.ClientReady, c => {
 	} catch (err) {
 		console.error('Config migration failed:', err);
 	}
+	checkSchedules();
+	setInterval(checkSchedules, 60_000);
 });
 
 client.on(Events.MessageCreate, async message => {
 	try {
 		if (!message.guild || message.author.bot) return;
+
+		const ownAfk = afkService.getAfk(message.guild.id, message.author.id);
+		if (ownAfk) {
+			const removed = afkService.clearAfk(message.guild.id, message.author.id);
+			const dur = afkService.formatDuration(Date.now() - removed.since);
+			await message.channel.send({ content: `👋 Welkom terug ${message.author}, je was ${dur} AFK.` }).catch(() => null);
+		}
+
+		if (message.mentions.users.size > 0) {
+			const mentioned = [];
+			for (const [id, user] of message.mentions.users) {
+				if (id === message.author.id) continue;
+				const afk = afkService.getAfk(message.guild.id, id);
+				if (afk) {
+					const dur = afkService.formatDuration(Date.now() - afk.since);
+					mentioned.push(`💤 ${user.username} is AFK (${dur}): *${afk.reason}*`);
+				}
+			}
+			if (mentioned.length) {
+				await message.reply({ content: mentioned.join('\n'), allowedMentions: { repliedUser: false } }).catch(() => null);
+			}
+		}
 
 		if (await handleCountingMessage(message)) {
 			return;
@@ -778,6 +918,10 @@ client.on(Events.MessageCreate, async message => {
 
 		if (await handleMinigameMessage(message)) {
 			return;
+		}
+
+		if (await handleChallengeMessage(message)) {
+			// challenge answer handled — still award XP and maybe crown spawn below
 		}
 
 		const gainedXp = Math.floor(Math.random() * (xpPerMessageMax - xpPerMessageMin + 1)) + xpPerMessageMin;
@@ -905,7 +1049,7 @@ client.on(Events.InteractionCreate, async interaction => {
 				claim.claimedAt = Date.now();
 				writeJson(crownsClaimsFile, allClaims);
 
-				addBalance(crownsFile, interaction.guildId, interaction.user.id, 1);
+				addCrownBalance(crownsFile, interaction.guildId, interaction.user.id, 1);
 
 				const disabledRow = new ActionRowBuilder().addComponents(
 					new ButtonBuilder()
@@ -1065,6 +1209,11 @@ client.on(Events.InteractionCreate, async interaction => {
 				await interaction.showModal(modal);
 				return;
 			}
+		}
+
+		if (interaction.isModalSubmit() && interaction.customId.startsWith('redembed:submit:')) {
+			await redembedCommand.handleModal(interaction);
+			return;
 		}
 
 		if (interaction.isModalSubmit() && interaction.customId.startsWith('ticketmodal:')) {
