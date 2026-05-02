@@ -129,14 +129,11 @@ function isGameAllowedInChannel(guildId, game, channelId) {
 }
 
 function buildWordleEmbed(state) {
-	const rows = state.guesses.map(({ word, marks }) => {
-		const emojiRow = marks.map(m => {
-			if (m === 'correct') return '🟩';
-			if (m === 'present') return '🟨';
-			return '⬛';
-		}).join('');
-		return emojiRow;
-	});
+	const rows = state.guesses.map(({ marks }) => marks.map(m => {
+		if (m === 'correct') return '🟩';
+		if (m === 'present') return '🟨';
+		return '⬛';
+	}).join(''));
 	const empty = '⬜'.repeat(state.answer.length);
 	while (rows.length < state.maxGuesses) rows.push(empty);
 
@@ -145,6 +142,11 @@ function buildWordleEmbed(state) {
 		.setTitle('🟩 Wordle')
 		.setDescription(`Type een **${state.answer.length}-letter** woord in de chat. Je hebt ${state.maxGuesses - state.guesses.length} pogingen over.\n\n${rows.join('\n')}`)
 		.setFooter({ text: 'Speler: ' + (state.starterTag || state.starterId) });
+
+	if (state.guesses.length > 0) {
+		const list = state.guesses.map((g, i) => `${i + 1}. \`${g.word.toUpperCase()}\``).join('\n');
+		embed.addFields({ name: 'Geraden woorden', value: list });
+	}
 
 	if (state.finished) {
 		embed.addFields({ name: state.won ? '✅ Gewonnen!' : '❌ Verloren', value: `Het woord was **${state.answer.toUpperCase()}**.` });
@@ -298,16 +300,13 @@ function buildMinesweeperRows(state) {
 }
 
 function buildMinesweeperEmbed(state) {
-	const totalCells = state.width * state.height;
-	const revealed = state.cells.filter(c => c.revealed && !c.bomb).length;
-	const flagged = state.cells.filter(c => c.flagged).length;
 	const embed = new EmbedBuilder()
 		.setColor(0xb40f0f)
 		.setTitle('💣 Minesweeper')
-		.setDescription(`Klik tegels om te onthullen. Vlag-modus markeert verdachte cellen.\nBord: ${state.width}×${state.height} • ${state.bombs} bommen.\nOnthuld: ${revealed}/${totalCells - state.bombs} • Vlaggen: ${flagged}/${state.bombs}`)
+		.setDescription(`Klik tegels om te onthullen. Vlag-modus markeert verdachte cellen.\nBord: ${state.width}×${state.height}. Hoeveel bommen er liggen? Dat moet je zelf uitvogelen 😈`)
 		.setFooter({ text: 'Speler: ' + (state.starterTag || state.starterId) });
 	if (state.finished) {
-		embed.addFields({ name: state.won ? '✅ Gewonnen!' : '💥 Gefaald', value: state.won ? 'Alle veilige tegels onthuld.' : 'Je raakte een bom.' });
+		embed.addFields({ name: state.won ? '✅ Gewonnen!' : '💥 Gefaald', value: state.won ? `Alle veilige tegels onthuld. Er waren **${state.bombs}** bommen.` : `Je raakte een bom. Er waren er **${state.bombs}** in totaal.` });
 	}
 	return embed;
 }
