@@ -939,7 +939,15 @@ async function createTicketChannel(interaction, ticketType, fields) {
 	}
 
 	const pingText = supportRoleId ? `<@&${supportRoleId}>` : '';
-	await ticketChannel.send({ content: `${pingText} ${interaction.user}`.trim(), embeds: [ticketEmbed] }).catch(err => {
+	const controlRow = new ActionRowBuilder().addComponents(
+		new ButtonBuilder().setCustomId(`ticket:claim:${interaction.user.id}`).setLabel('Claim ticket').setStyle(ButtonStyle.Primary).setEmoji('🙋'),
+		new ButtonBuilder().setCustomId(`ticket:close:${interaction.user.id}`).setLabel('Sluit ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+	);
+	await ticketChannel.send({
+		content: `${pingText} ${interaction.user}`.trim(),
+		embeds: [ticketEmbed],
+		components: [controlRow],
+	}).catch(err => {
 		console.error('Failed to send ticket summary:', err);
 	});
 
@@ -1294,6 +1302,60 @@ client.on(Events.InteractionCreate, async interaction => {
 
 				await member.roles.add(roleId).catch(() => null);
 				await interaction.reply({ content: `Rol <@&${roleId}> toegevoegd.`, flags: 64 });
+				return;
+			}
+
+			if (interaction.customId.startsWith('ticket:claim:')) {
+				const creatorId = interaction.customId.split(':')[2];
+				const member = interaction.member;
+				const settings = getSettings(interaction.guildId);
+				const supportRoleId = settings.roles?.ticketSupport;
+				const isSupport = supportRoleId && member?.roles?.cache?.has(supportRoleId);
+				const isAdmin = member?.permissions?.has(PermissionFlagsBits.ManageChannels);
+				if (!isSupport && !isAdmin) {
+					await interaction.reply({ content: '❌ Alleen support-rol of admins kunnen dit ticket claimen.', flags: 64 });
+					return;
+				}
+
+				const closeButton = new ButtonBuilder().setCustomId(`ticket:close:${creatorId}`).setLabel('Sluit ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒');
+				const updatedRow = new ActionRowBuilder().addComponents(
+					new ButtonBuilder().setCustomId(`ticket:claimed:${interaction.user.id}`).setLabel(`Geclaimd door ${interaction.user.username}`).setStyle(ButtonStyle.Success).setEmoji('✅').setDisabled(true),
+					closeButton,
+				);
+
+				await interaction.update({ components: [updatedRow] }).catch(() => null);
+				await interaction.followUp({
+					content: `<@${creatorId}> ✅ Je ticket is geclaimd door <@${interaction.user.id}> — ze gaan ernaar kijken.`,
+					allowedMentions: { users: [creatorId] },
+				}).catch(err => console.error('Failed to ping creator on claim:', err));
+				return;
+			}
+
+			if (interaction.customId.startsWith('ticket:close:')) {
+				const creatorId = interaction.customId.split(':')[2];
+				const member = interaction.member;
+				const settings = getSettings(interaction.guildId);
+				const supportRoleId = settings.roles?.ticketSupport;
+				const isSupport = supportRoleId && member?.roles?.cache?.has(supportRoleId);
+				const isAdmin = member?.permissions?.has(PermissionFlagsBits.ManageChannels);
+				const isCreator = interaction.user.id === creatorId;
+				if (!isSupport && !isAdmin && !isCreator) {
+					await interaction.reply({ content: '❌ Alleen de aanmaker, support-rol of admins kunnen dit ticket sluiten.', flags: 64 });
+					return;
+				}
+
+				const disabledRow = new ActionRowBuilder().addComponents(
+					new ButtonBuilder().setCustomId('ticket:closing').setLabel('Sluiten...').setStyle(ButtonStyle.Secondary).setEmoji('🔒').setDisabled(true),
+				);
+				await interaction.update({ components: [disabledRow] }).catch(() => null);
+				await interaction.followUp({ content: `🔒 Ticket gesloten door <@${interaction.user.id}>. Dit kanaal wordt over **5 seconden** verwijderd.` }).catch(() => null);
+
+				const channel = interaction.channel;
+				setTimeout(() => {
+					channel.delete(`Ticket closed by ${interaction.user.tag}`).catch(err => {
+						console.error('Failed to delete ticket channel:', err);
+					});
+				}, 5000);
 				return;
 			}
 
