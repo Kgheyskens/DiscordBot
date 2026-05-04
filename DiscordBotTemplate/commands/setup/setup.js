@@ -6,7 +6,7 @@ const {
 	PermissionFlagsBits,
 	SlashCommandBuilder,
 } = require('discord.js');
-const { getSettings } = require('../../lib/guildSettings');
+const { getSettings, getApplicationRoles } = require('../../lib/guildSettings');
 const { listCategories } = require('../../lib/roleCategoryService');
 
 function buildOverviewEmbed(guildId) {
@@ -37,6 +37,7 @@ function buildOverviewEmbed(guildId) {
 		'',
 		'**Rollen**',
 		`• Ticket support: ${r.ticketSupport ? `<@&${r.ticketSupport}>` : '_niet ingesteld_'}`,
+		`• Sollicitatie-rollen: ${getApplicationRoles(guildId).length} ingesteld (${getApplicationRoles(guildId).filter(x => x.available).length} beschikbaar)`,
 		'',
 		'**Economy**',
 		`• Status: ${econ.enabled ? '✅ aan' : '❌ uit'} • Crown spawn: ${econ.crownSpawnChance}%`,

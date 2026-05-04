@@ -62,6 +62,7 @@ const DEFAULT_SETTINGS = {
 		postDay: 1,
 		postHour: 10,
 	},
+	applicationRoles: [],
 };
 
 function deepMerge(target, source) {
@@ -135,6 +136,56 @@ function setHallOfFame(guildId, partial) {
 	return saveSettings(guildId, { hallOfFame: partial || {} });
 }
 
+function getApplicationRoles(guildId) {
+	const settings = getSettings(guildId);
+	return Array.isArray(settings.applicationRoles) ? settings.applicationRoles : [];
+}
+
+function setApplicationRoles(guildId, roles) {
+	const list = Array.isArray(roles) ? roles : [];
+	return saveSettings(guildId, { applicationRoles: list });
+}
+
+function addApplicationRole(guildId, { label, roleId = null, available = true }) {
+	const cleanedLabel = String(label || '').trim().slice(0, 80);
+	if (!cleanedLabel) return { error: '❌ Geef een naam voor de rol op.' };
+	const list = getApplicationRoles(guildId);
+	if (list.length >= 25) return { error: '❌ Maximum 25 sollicitatie-rollen.' };
+	if (list.some(r => r.label.toLowerCase() === cleanedLabel.toLowerCase())) {
+		return { error: '❌ Er bestaat al een rol met die naam.' };
+	}
+	const id = `app-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+	const entry = { id, label: cleanedLabel, roleId: roleId || null, available: Boolean(available) };
+	setApplicationRoles(guildId, [...list, entry]);
+	return { entry };
+}
+
+function updateApplicationRole(guildId, id, patch) {
+	const list = getApplicationRoles(guildId);
+	const idx = list.findIndex(r => r.id === id);
+	if (idx === -1) return { error: '❌ Rol niet gevonden.' };
+	const next = { ...list[idx] };
+	if (patch.label !== undefined) {
+		const cleaned = String(patch.label || '').trim().slice(0, 80);
+		if (!cleaned) return { error: '❌ Naam mag niet leeg zijn.' };
+		next.label = cleaned;
+	}
+	if (patch.roleId !== undefined) next.roleId = patch.roleId || null;
+	if (patch.available !== undefined) next.available = Boolean(patch.available);
+	const copy = [...list];
+	copy[idx] = next;
+	setApplicationRoles(guildId, copy);
+	return { entry: next };
+}
+
+function removeApplicationRole(guildId, id) {
+	const list = getApplicationRoles(guildId);
+	const next = list.filter(r => r.id !== id);
+	if (next.length === list.length) return { error: '❌ Rol niet gevonden.' };
+	setApplicationRoles(guildId, next);
+	return { ok: true };
+}
+
 function resetSection(guildId, section) {
 	if (!DEFAULT_SETTINGS[section]) return null;
 	const all = readAll();
@@ -159,5 +210,10 @@ module.exports = {
 	setCrownshop,
 	setChallenge,
 	setHallOfFame,
+	getApplicationRoles,
+	setApplicationRoles,
+	addApplicationRole,
+	updateApplicationRole,
+	removeApplicationRole,
 	resetSection,
 };

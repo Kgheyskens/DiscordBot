@@ -30,6 +30,7 @@ const {
 	PermissionFlagsBits,
 	PermissionsBitField,
 	Partials,
+	StringSelectMenuBuilder,
 	TextInputBuilder,
 	TextInputStyle,
 } = require('discord.js');
@@ -1298,6 +1299,40 @@ client.on(Events.InteractionCreate, async interaction => {
 
 			if (interaction.customId.startsWith('ticketpanel:')) {
 				const ticketType = interaction.customId.split(':')[1];
+
+				if (ticketType === 'sollicitaties') {
+					const apps = require('./lib/guildSettings').getApplicationRoles(interaction.guildId);
+					if (!apps.length) {
+						await interaction.reply({ content: '❌ Er staan momenteel geen sollicitatie-rollen ingesteld. Een admin moet ze eerst aanmaken via `/setup → Rollen → Sollicitatie-rollen`.', flags: 64 });
+						return;
+					}
+					const available = apps.filter(a => a.available);
+					if (!available.length) {
+						const list = apps.map(a => `• ${a.label} — _niet beschikbaar momenteel_`).join('\n');
+						await interaction.reply({ content: `❌ Er zijn momenteel geen rollen open voor sollicitatie.\n\n${list}`, flags: 64 });
+						return;
+					}
+
+					const select = new StringSelectMenuBuilder()
+						.setCustomId('applyrole:select')
+						.setPlaceholder('Kies de rol waarvoor je solliciteert');
+
+					for (const a of apps.slice(0, 25)) {
+						select.addOptions({
+							label: a.available ? a.label.slice(0, 100) : `${a.label} (niet beschikbaar momenteel)`.slice(0, 100),
+							value: a.available ? `open:${a.id}` : `closed:${a.id}`,
+							description: a.available ? 'Beschikbaar voor sollicitatie' : 'Niet beschikbaar momenteel',
+						});
+					}
+
+					await interaction.reply({
+						content: '📨 **Sollicitatie starten**\nKies hieronder voor welke rol je solliciteert. Rollen met _"(niet beschikbaar momenteel)"_ kunnen niet gekozen worden.',
+						components: [new ActionRowBuilder().addComponents(select)],
+						flags: 64,
+					});
+					return;
+				}
+
 				const modal = buildTicketModal(ticketType);
 				if (!modal) {
 					await interaction.reply({ content: 'Onbekend tickettype.', flags: 64 });
@@ -1315,12 +1350,15 @@ client.on(Events.InteractionCreate, async interaction => {
 		}
 
 		if (interaction.isModalSubmit() && interaction.customId.startsWith('ticketmodal:')) {
-			const ticketType = interaction.customId.split(':')[1];
+			const parts = interaction.customId.split(':');
+			const ticketType = parts[1];
+			const extraId = parts[2] || null;
+
 			const fieldDefinitions = {
 				partnerships: ['server_name', 'member_count', 'discord_link', 'goal'],
 				vragen: ['question', 'context', 'priority'],
 				twitch_promotie: ['twitch_name', 'stream_link', 'promotion_goal', 'extra'],
-				sollicitaties: ['name', 'position', 'experience', 'motivation'],
+				sollicitaties: ['name', 'experience', 'motivation'],
 			}[ticketType];
 
 			if (!fieldDefinitions) {
@@ -1333,6 +1371,20 @@ client.on(Events.InteractionCreate, async interaction => {
 				ticketFields[fieldId] = interaction.fields.getTextInputValue(fieldId);
 			}
 
+			if (ticketType === 'sollicitaties' && extraId) {
+				const apps = require('./lib/guildSettings').getApplicationRoles(interaction.guildId);
+				const app = apps.find(a => a.id === extraId);
+				if (!app) {
+					await interaction.reply({ content: '❌ De gekozen rol bestaat niet meer.', flags: 64 });
+					return;
+				}
+				if (!app.available) {
+					await interaction.reply({ content: '❌ Deze rol is intussen niet meer beschikbaar voor sollicitatie.', flags: 64 });
+					return;
+				}
+				ticketFields.position = app.label + (app.roleId ? ` (${app.roleId ? `<@&${app.roleId}>` : ''})` : '');
+			}
+
 			const ticketChannel = await createTicketChannel(interaction, ticketType, ticketFields);
 			if (!ticketChannel) {
 				await interaction.reply({ content: 'Kon ticket niet aanmaken.', flags: 64 });
@@ -1342,6 +1394,38 @@ client.on(Events.InteractionCreate, async interaction => {
 			await interaction.reply({ content: `Ticket aangemaakt: ${ticketChannel}`, flags: 64 });
 			return;
 		}
+
+	if (interaction.isStringSelectMenu() && interaction.customId === 'applyrole:select') {
+		const value = interaction.values?.[0] || '';
+		if (value.startsWith('closed:')) {
+			await interaction.reply({ content: '🚫 Deze rol is momenteel niet beschikbaar voor sollicitatie. Kies een andere of probeer later opnieuw.', flags: 64 });
+			return;
+		}
+		const id = value.replace(/^open:/, '');
+		const apps = require('./lib/guildSettings').getApplicationRoles(interaction.guildId);
+		const app = apps.find(a => a.id === id);
+		if (!app || !app.available) {
+			await interaction.reply({ content: '❌ Deze rol is niet meer beschikbaar.', flags: 64 });
+			return;
+		}
+
+		const modal = new ModalBuilder()
+			.setCustomId(`ticketmodal:sollicitaties:${app.id}`)
+			.setTitle(`Sollicitatie: ${app.label}`.slice(0, 45));
+		modal.addComponents(
+			new ActionRowBuilder().addComponents(
+				new TextInputBuilder().setCustomId('name').setLabel('Naam').setStyle(TextInputStyle.Short).setPlaceholder('Hoe mogen we je noemen?').setRequired(true),
+			),
+			new ActionRowBuilder().addComponents(
+				new TextInputBuilder().setCustomId('experience').setLabel('Ervaring').setStyle(TextInputStyle.Paragraph).setPlaceholder('Welke ervaring heb je?').setRequired(true),
+			),
+			new ActionRowBuilder().addComponents(
+				new TextInputBuilder().setCustomId('motivation').setLabel('Motivatie').setStyle(TextInputStyle.Paragraph).setPlaceholder('Waarom wil je dit doen?').setRequired(true),
+			),
+		);
+		await interaction.showModal(modal);
+		return;
+	}
 
 	if (interaction.isStringSelectMenu() && interaction.customId.startsWith('rolemenu:')) {
 		const menuId = interaction.customId.split(':')[1];

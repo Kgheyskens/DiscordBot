@@ -24,6 +24,10 @@ const {
 	setCrownshop,
 	setChallenge,
 	setHallOfFame,
+	getApplicationRoles,
+	addApplicationRole,
+	updateApplicationRole,
+	removeApplicationRole,
 } = require('./guildSettings');
 const {
 	getRule,
@@ -45,15 +49,15 @@ const minigameService = require('./minigameService');
 const MINIGAMES = ['wordle', 'hangman', 'minesweeper'];
 
 const CHANNEL_KEYS = [
-	{ key: 'welcome', label: 'Welcome channel' },
-	{ key: 'levels', label: 'Levels channel' },
-	{ key: 'counting', label: 'Counting channel' },
-	{ key: 'twitch', label: 'Twitch channel' },
-	{ key: 'ticketCategory', label: 'Ticket category', categoryOnly: true },
-	{ key: 'ticketPanel', label: 'Ticket panel channel' },
-	{ key: 'modlog', label: 'Mod-log channel' },
-	{ key: 'challenge', label: 'Daily challenge channel' },
-	{ key: 'halloffame', label: 'Hall of Fame channel' },
+	{ key: 'welcome', label: 'Welcome channel', description: 'Waar welkom-berichten verschijnen.' },
+	{ key: 'levels', label: 'Levels channel', description: 'Waar level-up berichten verschijnen.' },
+	{ key: 'counting', label: 'Counting channel', description: 'Het tel-kanaal.' },
+	{ key: 'twitch', label: 'Twitch channel', description: 'Waar Twitch-aankondigingen verschijnen.' },
+	{ key: 'ticketPanel', label: 'Ticket-panel kanaal', description: 'Waar de knoppen-panel staat waar leden tickets openen.' },
+	{ key: 'ticketCategory', label: 'Ticket-kanalen category', description: 'Category waarin nieuwe ticket-kanalen worden aangemaakt (incl. sollicitaties).', categoryOnly: true },
+	{ key: 'modlog', label: 'Mod-log channel', description: 'Waar moderatie-acties gelogd worden.' },
+	{ key: 'challenge', label: 'Daily challenge channel', description: 'Waar de dagelijkse puzzel verschijnt.' },
+	{ key: 'halloffame', label: 'Hall of Fame channel', description: 'Waar de maandelijkse top-3 verschijnt.' },
 ];
 
 const ROLE_KEYS = [
@@ -99,26 +103,72 @@ async function handleMenu(interaction, target) {
 	}
 
 	if (target === 'channels') {
+		const settings = getSettings(interaction.guildId);
+		const ch = settings.channels || {};
 		const select = new StringSelectMenuBuilder()
 			.setCustomId('setup:select:channelKey')
-			.setPlaceholder('Kies welk channel je wilt instellen')
-			.addOptions(CHANNEL_KEYS.map(c => ({ label: c.label, value: c.key })));
+			.setPlaceholder('Kies welk channel/category je wilt instellen')
+			.addOptions(CHANNEL_KEYS.map(c => ({
+				label: c.label.slice(0, 100),
+				value: c.key,
+				description: c.description ? c.description.slice(0, 100) : undefined,
+			})));
+
+		const lines = CHANNEL_KEYS.map(c => {
+			const cur = ch[c.key];
+			const ref = cur ? `<#${cur}>` : '_niet ingesteld_';
+			return `• **${c.label}**: ${ref}\n  └ _${c.description || ''}_`;
+		}).join('\n');
+
 		await interaction.update({
-			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('Channels').setDescription('Kies een channel om in te stellen.')],
+			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('📢 Channels & Categories').setDescription([
+				'Stel hier in waar elke functie plaatsvindt.',
+				'',
+				lines,
+			].join('\n'))],
 			components: [new ActionRowBuilder().addComponents(select), backRow()],
 		}).catch(() => null);
 		return;
 	}
 
 	if (target === 'roles') {
+		const settings = getSettings(interaction.guildId);
+		const apps = Array.isArray(settings.applicationRoles) ? settings.applicationRoles : [];
+		const availableCount = apps.filter(a => a.available).length;
+
 		const select = new StringSelectMenuBuilder()
 			.setCustomId('setup:select:roleKey')
 			.setPlaceholder('Kies welke rol je wilt instellen')
 			.addOptions(ROLE_KEYS.map(r => ({ label: r.label, value: r.key })));
+
+		const appsButton = new ButtonBuilder()
+			.setCustomId('setup:menu:applicationRoles')
+			.setLabel(`Sollicitatie-rollen (${availableCount}/${apps.length})`)
+			.setStyle(ButtonStyle.Primary);
+
 		await interaction.update({
-			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('Rollen').setDescription('Kies een rol-functie.')],
-			components: [new ActionRowBuilder().addComponents(select), backRow()],
+			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('👥 Rollen').setDescription([
+				'Hier beheer je alle rol-functies van de bot.',
+				'',
+				'**1. Functionele rollen** — kies welke server-rol een bot-functie moet gebruiken.',
+				'• _Ticket support_: rol die toegang krijgt tot nieuw aangemaakte tickets.',
+				'',
+				'**2. Sollicitatie-rollen** — welke posities iemand kan aanvragen via een sollicitatie-ticket.',
+				`• Momenteel **${apps.length}** rol(len) ingesteld, **${availableCount}** beschikbaar.`,
+				'• Wanneer iemand het sollicitatie-ticket opent, kiest die uit deze lijst. Niet-beschikbare rollen worden zichtbaar getoond met "(niet beschikbaar momenteel)" en kunnen niet geselecteerd worden.',
+				'• Je kunt rollen op elk moment aan/uit zetten zonder ze te verwijderen.',
+			].join('\n'))],
+			components: [
+				new ActionRowBuilder().addComponents(select),
+				new ActionRowBuilder().addComponents(appsButton),
+				backRow(),
+			],
 		}).catch(() => null);
+		return;
+	}
+
+	if (target === 'applicationRoles') {
+		await showApplicationRolesMenu(interaction);
 		return;
 	}
 
@@ -187,14 +237,41 @@ async function handleMenu(interaction, target) {
 	if (target === 'tickets') {
 		const settings = getSettings(interaction.guildId);
 		const ch = settings.channels;
+
+		const categorySelect = new ChannelSelectMenuBuilder()
+			.setCustomId('setup:setChannel:ticketCategory')
+			.setPlaceholder('Kies de category waar nieuwe ticket-kanalen in komen')
+			.setChannelTypes([ChannelType.GuildCategory])
+			.setMinValues(0)
+			.setMaxValues(1);
+
+		const panelSelect = new ChannelSelectMenuBuilder()
+			.setCustomId('setup:setChannel:ticketPanel')
+			.setPlaceholder('Kies het kanaal voor het ticket-panel (knoppen)')
+			.setChannelTypes([ChannelType.GuildText, ChannelType.GuildAnnouncement])
+			.setMinValues(0)
+			.setMaxValues(1);
+
 		const row1 = new ActionRowBuilder().addComponents(
 			new ButtonBuilder().setCustomId('setup:tickets:postpanel').setLabel('Plaats ticket-panel').setStyle(ButtonStyle.Primary).setDisabled(!ch.ticketPanel),
 		);
+
 		await interaction.update({
-			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('Tickets').setDescription(
-				`Panel channel: ${ch.ticketPanel ? `<#${ch.ticketPanel}>` : '_niet ingesteld via Channels_'}\nCategory: ${ch.ticketCategory ? `<#${ch.ticketCategory}>` : '_niet ingesteld_'}\nSupport rol: ${settings.roles.ticketSupport ? `<@&${settings.roles.ticketSupport}>` : '_niet ingesteld_'}\n\nStel eerst de channels en rol in.`,
-			)],
-			components: [row1, backRow()],
+			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('🎫 Tickets').setDescription([
+				'Tickets zijn private kanalen die leden openen via een knoppen-paneel.',
+				'',
+				`**Panel-kanaal** (waar de knoppen staan): ${ch.ticketPanel ? `<#${ch.ticketPanel}>` : '_niet ingesteld_'}`,
+				`**Ticket-category** (waar nieuwe ticket-kanalen onder komen): ${ch.ticketCategory ? `<#${ch.ticketCategory}>` : '_niet ingesteld_'}`,
+				`**Support-rol** (krijgt automatisch toegang): ${settings.roles.ticketSupport ? `<@&${settings.roles.ticketSupport}>` : '_niet ingesteld via Rollen_'}`,
+				'',
+				'_Pas hieronder aan, of plaats het paneel zodra alles staat. Sollicitatie-rollen beheer je via **Rollen → Sollicitatie-rollen**._',
+			].join('\n'))],
+			components: [
+				new ActionRowBuilder().addComponents(panelSelect),
+				new ActionRowBuilder().addComponents(categorySelect),
+				row1,
+				backRow(),
+			],
 		}).catch(() => null);
 		return;
 	}
@@ -248,12 +325,25 @@ async function handleSelect(interaction) {
 	if (kind === 'channelKey') {
 		const channelKey = interaction.values[0];
 		const meta = CHANNEL_KEYS.find(c => c.key === channelKey);
+		const settings = getSettings(interaction.guildId);
+		const current = settings.channels?.[channelKey];
 		const select = new ChannelSelectMenuBuilder()
 			.setCustomId(`setup:setChannel:${channelKey}`)
-			.setPlaceholder(`Kies een channel voor ${meta?.label || channelKey}`)
+			.setPlaceholder(meta?.categoryOnly ? `Kies een category voor ${meta?.label}` : `Kies een channel voor ${meta?.label || channelKey}`)
+			.setMinValues(0)
+			.setMaxValues(1)
 			.setChannelTypes(meta?.categoryOnly ? [ChannelType.GuildCategory] : [ChannelType.GuildText, ChannelType.GuildAnnouncement]);
+
+		const desc = [
+			meta?.description ? `_${meta.description}_` : '',
+			'',
+			`**Huidig:** ${current ? `<#${current}>` : '_niet ingesteld_'}`,
+			'',
+			'_Tip: laat de selectie leeg om te ontkoppelen._',
+		].filter(Boolean).join('\n');
+
 		await interaction.update({
-			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle(meta?.label || channelKey).setDescription('Selecteer het juiste channel.')],
+			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle(meta?.label || channelKey).setDescription(desc)],
 			components: [new ActionRowBuilder().addComponents(select), backRow()],
 		}).catch(() => null);
 		return;
@@ -1226,6 +1316,236 @@ async function handleRoleCatModal(interaction) {
 	}
 }
 
+async function showApplicationRolesMenu(interaction, options = {}) {
+	const apps = getApplicationRoles(interaction.guildId);
+
+	const lines = apps.length
+		? apps.map(a => {
+			const tag = a.roleId ? `<@&${a.roleId}>` : '_geen Discord-rol gekoppeld_';
+			const status = a.available ? '✅ beschikbaar' : '🚫 niet beschikbaar momenteel';
+			return `• **${a.label}** — ${status} • ${tag}`;
+		}).join('\n')
+		: '_Nog geen sollicitatie-rollen aangemaakt._';
+
+	const embed = new EmbedBuilder()
+		.setColor(0xb40f0f)
+		.setTitle('🧾 Sollicitatie-rollen')
+		.setDescription([
+			'Beheer de rollen waarvoor leden kunnen solliciteren via het ticket-paneel.',
+			'',
+			'**Hoe werkt het?**',
+			'• Voeg rollen toe met een **naam** (bv. "Moderator") en optioneel een **gekoppelde Discord-rol** (puur informatief, voor jullie eigen overzicht).',
+			'• Zet een rol op **beschikbaar** (✅) als ze open staat voor sollicitaties.',
+			'• Een **niet-beschikbare** rol blijft zichtbaar in het sollicitatie-formulier maar staat erbij als _"(niet beschikbaar momenteel)"_ en kan niet gekozen worden.',
+			'• Pas elk moment aan: aan/uit, hernoem, of verwijder.',
+			'',
+			'**Huidige rollen:**',
+			lines,
+		].join('\n'));
+
+	const rows = [
+		new ActionRowBuilder().addComponents(
+			new ButtonBuilder().setCustomId('setup:approle:add').setLabel('➕ Rol toevoegen').setStyle(ButtonStyle.Success),
+		),
+	];
+
+	if (apps.length) {
+		const select = new StringSelectMenuBuilder()
+			.setCustomId('setup:approle:pick')
+			.setPlaceholder('Kies een rol om te bewerken')
+			.addOptions(apps.slice(0, 25).map(a => ({
+				label: `${a.available ? '✅' : '🚫'} ${a.label}`.slice(0, 100),
+				value: a.id,
+				description: a.available ? 'Beschikbaar voor sollicitatie' : 'Niet beschikbaar momenteel',
+			})));
+		rows.push(new ActionRowBuilder().addComponents(select));
+	}
+
+	rows.push(new ActionRowBuilder().addComponents(
+		new ButtonBuilder().setCustomId('setup:menu:roles').setLabel('Terug naar Rollen').setStyle(ButtonStyle.Secondary),
+		new ButtonBuilder().setCustomId('setup:menu:back').setLabel('Hoofdmenu').setStyle(ButtonStyle.Secondary),
+	));
+
+	const payload = { embeds: [embed], components: rows };
+	if (options.flash) payload.content = options.flash;
+
+	if (interaction.replied || interaction.deferred) {
+		await interaction.editReply(payload).catch(() => null);
+	} else if (interaction.update) {
+		await interaction.update(payload).catch(() => null);
+	} else {
+		await interaction.reply({ ...payload, flags: 64 }).catch(() => null);
+	}
+}
+
+async function showApplicationRoleDetail(interaction, roleId, options = {}) {
+	const apps = getApplicationRoles(interaction.guildId);
+	const app = apps.find(a => a.id === roleId);
+	if (!app) {
+		await interaction.reply({ content: '❌ Rol niet gevonden.', flags: 64 });
+		return;
+	}
+
+	const embed = new EmbedBuilder()
+		.setColor(0xb40f0f)
+		.setTitle(`Sollicitatie-rol: ${app.label}`)
+		.setDescription([
+			`**Status:** ${app.available ? '✅ beschikbaar voor sollicitaties' : '🚫 niet beschikbaar momenteel'}`,
+			`**Gekoppelde Discord-rol:** ${app.roleId ? `<@&${app.roleId}>` : '_niet gekoppeld_'}`,
+			'',
+			'_De gekoppelde Discord-rol is puur informatief — ze wordt niet automatisch toegekend bij een sollicitatie._',
+		].join('\n'));
+
+	const roleSelect = new RoleSelectMenuBuilder()
+		.setCustomId(`setup:approle:role:${app.id}`)
+		.setPlaceholder('Koppel een Discord-rol (optioneel)')
+		.setMinValues(0)
+		.setMaxValues(1);
+
+	const buttonsRow = new ActionRowBuilder().addComponents(
+		new ButtonBuilder().setCustomId(`setup:approle:toggle:${app.id}`)
+			.setLabel(app.available ? 'Markeer niet beschikbaar' : 'Markeer beschikbaar')
+			.setStyle(app.available ? ButtonStyle.Danger : ButtonStyle.Success),
+		new ButtonBuilder().setCustomId(`setup:approle:rename:${app.id}`).setLabel('Naam aanpassen').setStyle(ButtonStyle.Primary),
+		new ButtonBuilder().setCustomId(`setup:approle:unlink:${app.id}`).setLabel('Discord-rol ontkoppelen').setStyle(ButtonStyle.Secondary).setDisabled(!app.roleId),
+		new ButtonBuilder().setCustomId(`setup:approle:delete:${app.id}`).setLabel('Verwijder').setStyle(ButtonStyle.Danger),
+	);
+
+	const navRow = new ActionRowBuilder().addComponents(
+		new ButtonBuilder().setCustomId('setup:menu:applicationRoles').setLabel('Terug naar lijst').setStyle(ButtonStyle.Secondary),
+		new ButtonBuilder().setCustomId('setup:menu:back').setLabel('Hoofdmenu').setStyle(ButtonStyle.Secondary),
+	);
+
+	const payload = {
+		embeds: [embed],
+		components: [new ActionRowBuilder().addComponents(roleSelect), buttonsRow, navRow],
+	};
+	if (options.flash) payload.content = options.flash;
+
+	if (interaction.replied || interaction.deferred) {
+		await interaction.editReply(payload).catch(() => null);
+	} else if (interaction.update) {
+		await interaction.update(payload).catch(() => null);
+	} else {
+		await interaction.reply({ ...payload, flags: 64 }).catch(() => null);
+	}
+}
+
+async function handleApplicationRoleInteraction(interaction) {
+	if (!isAdmin(interaction)) {
+		await interaction.reply({ content: 'Alleen admins.', flags: 64 });
+		return;
+	}
+
+	const parts = interaction.customId.split(':');
+	const action = parts[2];
+	const roleEntryId = parts[3];
+
+	if (action === 'add' && interaction.isButton()) {
+		const modal = new ModalBuilder().setCustomId('setup:modal:approle-add').setTitle('Nieuwe sollicitatie-rol');
+		modal.addComponents(
+			new ActionRowBuilder().addComponents(
+				new TextInputBuilder().setCustomId('label').setLabel('Naam (bv. Moderator)').setStyle(TextInputStyle.Short).setMaxLength(80).setRequired(true),
+			),
+			new ActionRowBuilder().addComponents(
+				new TextInputBuilder().setCustomId('available').setLabel('Direct beschikbaar? (ja/nee)').setStyle(TextInputStyle.Short).setValue('ja').setRequired(true),
+			),
+		);
+		await interaction.showModal(modal);
+		return;
+	}
+
+	if (action === 'pick' && interaction.isStringSelectMenu()) {
+		await showApplicationRoleDetail(interaction, interaction.values[0]);
+		return;
+	}
+
+	if (action === 'toggle' && interaction.isButton()) {
+		const apps = getApplicationRoles(interaction.guildId);
+		const cur = apps.find(a => a.id === roleEntryId);
+		if (!cur) {
+			await interaction.reply({ content: '❌ Rol niet gevonden.', flags: 64 });
+			return;
+		}
+		updateApplicationRole(interaction.guildId, roleEntryId, { available: !cur.available });
+		await showApplicationRoleDetail(interaction, roleEntryId, {
+			flash: cur.available ? '🚫 Rol is nu niet meer beschikbaar.' : '✅ Rol is nu beschikbaar.',
+		});
+		return;
+	}
+
+	if (action === 'role' && interaction.isRoleSelectMenu()) {
+		const id = interaction.values?.[0] || null;
+		updateApplicationRole(interaction.guildId, roleEntryId, { roleId: id });
+		await showApplicationRoleDetail(interaction, roleEntryId, { flash: id ? '✅ Discord-rol gekoppeld.' : '✅ Koppeling verwijderd.' });
+		return;
+	}
+
+	if (action === 'unlink' && interaction.isButton()) {
+		updateApplicationRole(interaction.guildId, roleEntryId, { roleId: null });
+		await showApplicationRoleDetail(interaction, roleEntryId, { flash: '✅ Discord-rol ontkoppeld.' });
+		return;
+	}
+
+	if (action === 'rename' && interaction.isButton()) {
+		const apps = getApplicationRoles(interaction.guildId);
+		const cur = apps.find(a => a.id === roleEntryId);
+		if (!cur) {
+			await interaction.reply({ content: '❌ Rol niet gevonden.', flags: 64 });
+			return;
+		}
+		const modal = new ModalBuilder().setCustomId(`setup:modal:approle-rename:${roleEntryId}`).setTitle('Naam aanpassen');
+		modal.addComponents(new ActionRowBuilder().addComponents(
+			new TextInputBuilder().setCustomId('label').setLabel('Nieuwe naam').setStyle(TextInputStyle.Short).setMaxLength(80).setValue(cur.label).setRequired(true),
+		));
+		await interaction.showModal(modal);
+		return;
+	}
+
+	if (action === 'delete' && interaction.isButton()) {
+		const result = removeApplicationRole(interaction.guildId, roleEntryId);
+		if (result.error) {
+			await interaction.reply({ content: result.error, flags: 64 });
+			return;
+		}
+		await showApplicationRolesMenu(interaction, { flash: '🗑️ Rol verwijderd.' });
+	}
+}
+
+async function handleApplicationRoleModal(interaction) {
+	if (!isAdmin(interaction)) {
+		await interaction.reply({ content: 'Alleen admins.', flags: 64 });
+		return;
+	}
+
+	const parts = interaction.customId.split(':');
+	const kind = parts[2];
+
+	if (kind === 'approle-add') {
+		const label = interaction.fields.getTextInputValue('label');
+		const availableRaw = interaction.fields.getTextInputValue('available') || 'ja';
+		const available = /^(ja|yes|y|true|1)$/i.test(availableRaw.trim());
+		const result = addApplicationRole(interaction.guildId, { label, available });
+		if (result.error) {
+			await interaction.reply({ content: result.error, flags: 64 });
+			return;
+		}
+		await interaction.reply({ content: `✅ Sollicitatie-rol **${result.entry.label}** toegevoegd (${available ? 'beschikbaar' : 'niet beschikbaar'}). Open de rol om een Discord-rol te koppelen.`, flags: 64 });
+		return;
+	}
+
+	if (kind === 'approle-rename') {
+		const roleEntryId = parts[3];
+		const label = interaction.fields.getTextInputValue('label');
+		const result = updateApplicationRole(interaction.guildId, roleEntryId, { label });
+		if (result.error) {
+			await interaction.reply({ content: result.error, flags: 64 });
+			return;
+		}
+		await interaction.reply({ content: `✅ Naam aangepast naar **${result.entry.label}**.`, flags: 64 });
+	}
+}
+
 async function dispatch(interaction) {
 	const id = interaction.customId || '';
 	if (!id.startsWith('setup:')) return false;
@@ -1237,6 +1557,7 @@ async function dispatch(interaction) {
 
 		if (interaction.isButton()) {
 			if (section === 'menu') { await handleMenu(interaction, action); return true; }
+			if (section === 'approle') { await handleApplicationRoleInteraction(interaction); return true; }
 			if (section === 'economy') { await handleEconomyButton(interaction, action); return true; }
 			if (section === 'welcome') { await handleWelcomeButton(interaction, action); return true; }
 			if (section === 'counting') { await handleCountingButton(interaction, action); return true; }
@@ -1253,6 +1574,7 @@ async function dispatch(interaction) {
 			if (section === 'select') { await handleSelect(interaction); return true; }
 			if (section === 'restrict' && action === 'mode') { await handleRestrictInteraction(interaction); return true; }
 			if (section === 'rolecats' && action === 'pick') { await handleRoleCatsSelect(interaction); return true; }
+			if (section === 'approle' && action === 'pick') { await handleApplicationRoleInteraction(interaction); return true; }
 		}
 		if (interaction.isChannelSelectMenu()) {
 			if (section === 'setChannel') { await handleChannelSelect(interaction); return true; }
@@ -1264,8 +1586,13 @@ async function dispatch(interaction) {
 			if (section === 'setRole') { await handleRoleSelect(interaction); return true; }
 			if (section === 'restrict' && action === 'roles') { await handleRestrictInteraction(interaction); return true; }
 			if (section === 'rolecat' && action === 'roles') { await handleRoleCatInteraction(interaction); return true; }
+			if (section === 'approle' && action === 'role') { await handleApplicationRoleInteraction(interaction); return true; }
 		}
 		if (interaction.isModalSubmit()) {
+			if (section === 'modal' && (action === 'approle-add' || action === 'approle-rename')) {
+				await handleApplicationRoleModal(interaction);
+				return true;
+			}
 			if (section === 'modal' && (action === 'rolecatNew' || action === 'rolecatRename')) {
 				await handleRoleCatModal(interaction);
 				return true;
