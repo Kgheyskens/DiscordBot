@@ -67,9 +67,19 @@ function buildOverviewEmbed(guildId) {
 
 	return new EmbedBuilder()
 		.setColor(0xb40f0f)
-		.setTitle('Server setup')
-		.setDescription('Kies een categorie om te configureren. Elke knop opent een submenu.')
-		.addFields({ name: 'Huidige instellingen', value: lines.join('\n').slice(0, 4000) });
+		.setTitle('🛠️ Server setup wizard')
+		.setDescription([
+			'Welkom in de setup wizard! Hieronder zie je een overzicht van de volledige bot-configuratie.',
+			'',
+			'**Hoe werkt het?**',
+			'• Klik op een knop hieronder om een sectie te openen.',
+			'• Elke sectie heeft eigen knoppen om instellingen aan/uit te zetten of te bewerken.',
+			'• Modale invoer (zoals bedragen) gebruikt dezelfde Discord-invoer als andere bots.',
+			'• Met **Status** ververs je dit overzicht. **Sluiten** sluit de wizard.',
+			'',
+			'_Tip:_ stel **Channels** en **Rollen** als eerste in — andere modules verwijzen ernaar.',
+		].join('\n'))
+		.addFields({ name: '📋 Huidige instellingen', value: lines.join('\n').slice(0, 4000) });
 }
 
 function buildMainButtons() {

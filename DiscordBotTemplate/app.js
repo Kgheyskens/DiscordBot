@@ -44,6 +44,7 @@ const { migrateGuildConfigs } = require('./lib/migrateConfigs');
 const setupWizard = require('./lib/setupWizard');
 const roleCategoryService = require('./lib/roleCategoryService');
 const minigameService = require('./lib/minigameService');
+const wordList = require('./lib/wordList');
 const challengeService = require('./lib/challengeService');
 const { buildChallengeEmbed } = require('./commands/challenge/challenge');
 const menuCommand = require('./commands/menu/menu');
@@ -368,8 +369,13 @@ async function handleMinigameMessage(message) {
 
 	if (state.game === 'wordle') {
 		if (text.length !== state.answer.length) return false;
-		if (!minigameService.isValidWord('wordle', text)) {
-			await message.reply({ content: `❌ \`${text.toUpperCase()}\` staat niet in de woordenlijst.` })
+		let valid = minigameService.isValidWord('wordle', text);
+		if (!valid) {
+			valid = await wordList.isValidWordleWordOnline(text).catch(() => false);
+			if (valid) wordList.addWordleDictionaryWord(text);
+		}
+		if (!valid) {
+			await message.reply({ content: `❌ \`${text.toUpperCase()}\` is geen geldig woord.` })
 				.then(reply => setTimeout(() => reply.delete().catch(() => null), 4000))
 				.catch(() => null);
 			await message.delete().catch(() => null);
@@ -714,28 +720,47 @@ async function settleBlackjackState(interaction, state, reason) {
 	const dealerBlackjack = isBlackjack(state.dealerHand);
 
 	let resultText = 'Gelijkspel.';
+	let net = 0;
+	let outcome = 'push';
 	if (playerTotal > 21) {
-		resultText = `Je bent busted en verliest ${state.bet} coins.`;
+		net = -state.bet;
+		outcome = 'loss';
+		resultText = `💥 Je bent busted (${playerTotal}). Je verliest **${state.bet} coins**.`;
 	} else if (dealerBust) {
 		addCoinBalance(coinsFile, interaction.guildId, interaction.user.id, state.bet * 2);
-		resultText = `Dealer is busted. Je wint ${state.bet} coins.`;
+		net = state.bet;
+		outcome = 'win';
+		resultText = `🎉 Dealer is busted (${dealerTotal}). Je wint **+${state.bet} coins** (uitbetaling ${state.bet * 2}).`;
 	} else if (playerBlackjack && !dealerBlackjack) {
-		addCoinBalance(coinsFile, interaction.guildId, interaction.user.id, Math.ceil(state.bet * 2.5));
-		resultText = `Blackjack! Je wint ${Math.ceil(state.bet * 2.5)} coins.`;
+		const payout = Math.ceil(state.bet * 2.5);
+		addCoinBalance(coinsFile, interaction.guildId, interaction.user.id, payout);
+		net = payout - state.bet;
+		outcome = 'win';
+		resultText = `🎉 Blackjack! Je wint **+${net} coins** (uitbetaling ${payout}).`;
 	} else if (dealerBlackjack && !playerBlackjack) {
-		resultText = `Dealer heeft blackjack. Je verliest ${state.bet} coins.`;
+		net = -state.bet;
+		outcome = 'loss';
+		resultText = `💥 Dealer heeft blackjack. Je verliest **${state.bet} coins**.`;
 	} else if (playerTotal > dealerTotal) {
 		addCoinBalance(coinsFile, interaction.guildId, interaction.user.id, state.bet * 2);
-		resultText = `Je hebt gewonnen met ${playerTotal} tegen ${dealerTotal}.`;
+		net = state.bet;
+		outcome = 'win';
+		resultText = `🎉 Je wint met **${playerTotal}** tegen ${dealerTotal}: **+${state.bet} coins**.`;
 	} else if (playerTotal < dealerTotal) {
-		resultText = `Dealer wint met ${dealerTotal} tegen ${playerTotal}.`;
+		net = -state.bet;
+		outcome = 'loss';
+		resultText = `💥 Dealer wint met **${dealerTotal}** tegen ${playerTotal}. Je verliest **${state.bet} coins**.`;
 	} else {
 		addCoinBalance(coinsFile, interaction.guildId, interaction.user.id, state.bet);
-		resultText = `Gelijkspel met ${playerTotal}. Je krijgt je inzet terug.`;
+		net = 0;
+		outcome = 'push';
+		resultText = `🤝 Gelijkspel met ${playerTotal}. Je inzet (${state.bet} coins) komt terug.`;
 	}
 
 	state.finished = true;
 	state.reason = reason;
+	state.netResult = net;
+	state.outcome = outcome;
 
 	const games = loadBlackjackGames();
 	games[state.gameId] = state;
@@ -744,6 +769,9 @@ async function settleBlackjackState(interaction, state, reason) {
 	return {
 		embed: buildBlackjackEmbed(state, true, resultText),
 		components: [buildBlackjackButtons(state.gameId, true)],
+		resultText,
+		net,
+		outcome,
 	};
 }
 
@@ -1072,14 +1100,14 @@ client.on(Events.InteractionCreate, async interaction => {
 
 					if (isBust(state.playerHand)) {
 						const result = await settleBlackjackState(interaction, state, 'bust');
-						await targetMessage.edit({ content: `Resultaat: je bent busted en verliest ${state.bet} kroontjes.`, embeds: [result.embed], components: result.components }).catch(error => {
+						await targetMessage.edit({ content: `<@${state.userId}> ${result.resultText}`, embeds: [result.embed], components: result.components }).catch(error => {
 							console.error('Failed to edit blackjack bust message:', error);
 						});
 						return;
 					}
 
 					await targetMessage.edit({
-						content: 'Blackjack is nu draaiende. Gebruik Hit of Stand.',
+						content: `<@${state.userId}> Blackjack is nu draaiende. Gebruik Hit of Stand.`,
 						embeds: [buildBlackjackEmbed(state, false, 'Blackjack is nu draaiende. Gebruik Hit of Stand.')],
 						components: [buildBlackjackButtons(gameId)],
 					}).catch(error => {
@@ -1092,7 +1120,7 @@ client.on(Events.InteractionCreate, async interaction => {
 					await interaction.deferUpdate().catch(() => null);
 					const targetMessage = await resolveBlackjackMessage(interaction);
 					const result = await settleBlackjackState(interaction, state, 'stand');
-					await targetMessage.edit({ content: `Resultaat: ${result.embed.data?.description || 'Blackjack afgerond.'}`, embeds: [result.embed], components: result.components }).catch(error => {
+					await targetMessage.edit({ content: `<@${state.userId}> ${result.resultText}`, embeds: [result.embed], components: result.components }).catch(error => {
 						console.error('Failed to edit blackjack stand message:', error);
 					});
 					return;
@@ -1364,11 +1392,16 @@ client.on(Events.InteractionCreate, async interaction => {
 		try {
 			await command.execute(interaction);
 		} catch (error) {
-			console.error(error);
-			if (interaction.replied || interaction.deferred) {
-				await interaction.followUp({ content: 'There was an error while executing this command!', flags: 64 });
-			} else {
-				await interaction.reply({ content: 'There was an error while executing this command!', flags: 64 });
+			console.error(`Command /${interaction.commandName} failed:`, error);
+			const errorMessage = '❌ Er ging iets mis bij het uitvoeren van dit command. Probeer het opnieuw of contacteer een admin als het blijft falen.';
+			try {
+				if (interaction.replied || interaction.deferred) {
+					await interaction.followUp({ content: errorMessage, flags: 64 });
+				} else {
+					await interaction.reply({ content: errorMessage, flags: 64 });
+				}
+			} catch (replyError) {
+				console.error('Failed to send error message:', replyError);
 			}
 		}
 	} catch (error) {

@@ -22,6 +22,8 @@ const coinsFile = path.join(__dirname, '..', '..', 'data', 'coins.json');
 const crownsConfigFile = path.join(__dirname, '..', '..', 'data', 'crownsConfig.json');
 const blackjackGamesFile = path.join(__dirname, '..', '..', 'data', 'blackjackGames.json');
 
+const MAX_BET = 1_000_000;
+
 function sleep(ms) {
 	return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -51,6 +53,19 @@ function buildCountdownText(secondsLeft) {
 	return `Het resultaat komt over **${secondsLeft}** seconden.`;
 }
 
+function validateBet(amount, balance) {
+	if (!Number.isInteger(amount) || amount <= 0) {
+		return { error: '❌ Je inzet moet een positief geheel getal zijn (minimaal 1 coin).' };
+	}
+	if (amount > MAX_BET) {
+		return { error: `❌ Maximum inzet is ${MAX_BET.toLocaleString('nl-BE')} coins.` };
+	}
+	if (balance < amount) {
+		return { error: `❌ Niet genoeg coins. Je hebt **${balance}** coins, je probeerde **${amount}** in te zetten.` };
+	}
+	return { ok: true };
+}
+
 async function resolveMessage(channel, messageId, fallbackMessage = null) {
 	if (!channel?.messages?.fetch || !messageId) {
 		return fallbackMessage;
@@ -74,7 +89,6 @@ async function editGameMessage(channel, messageId, fallbackMessage, payload, err
 }
 
 async function runResultCountdown(channel, messageId, fallbackMessage, title, finalDescriptionBuilder, mentionText = '', seconds = 10) {
-	// Initial edit shows the mention + countdown
 	await editGameMessage(channel, messageId, fallbackMessage, {
 		content: `${mentionText} ${buildCountdownText(seconds)}`.trim(),
 		embeds: [buildGambleEmbed(title, buildCountdownText(seconds))],
@@ -130,48 +144,31 @@ function buildBlackjackButtons(gameId, disabled = false) {
 	);
 }
 
-async function settleBlackjackGame(interaction, state, reason) {
-	while (handValue(state.dealerHand) < 17) {
-		state.dealerHand.push(drawCard(state.deck));
-	}
-
+function settleInitialBlackjack(state, guildId, userId) {
 	const playerTotal = handValue(state.playerHand);
 	const dealerTotal = handValue(state.dealerHand);
-	const dealerBust = isBust(state.dealerHand);
 	const playerBlackjack = isBlackjack(state.playerHand);
 	const dealerBlackjack = isBlackjack(state.dealerHand);
 
-	let resultText = 'Gelijkspel.';
-	if (playerTotal > 21) {
-		resultText = `Je bent busted en verliest ${formatCurrency(state.bet)}.`;
-	} else if (dealerBust) {
-		addBalance(coinsFile, interaction.guildId, interaction.user.id, state.bet * 2);
-		resultText = `Dealer is busted. Je wint ${formatCurrency(state.bet)}!`;
-	} else if (playerBlackjack && !dealerBlackjack) {
-		addBalance(coinsFile, interaction.guildId, interaction.user.id, Math.ceil(state.bet * 2.5));
-		resultText = `Blackjack! Je wint extra veel en krijgt ${Math.ceil(state.bet * 2.5)} coins terug.`;
-	} else if (dealerBlackjack && !playerBlackjack) {
-		resultText = `Dealer heeft blackjack. Je verliest ${formatCurrency(state.bet)}.`;
-	} else if (playerTotal > dealerTotal) {
-		addBalance(coinsFile, interaction.guildId, interaction.user.id, state.bet * 2);
-		resultText = `Je hebt gewonnen met ${playerTotal} tegen ${dealerTotal}.`;
-	} else if (playerTotal < dealerTotal) {
-		resultText = `Dealer wint met ${dealerTotal} tegen ${playerTotal}. Je verliest ${formatCurrency(state.bet)}.`;
+	let net = 0;
+	let resultText;
+	if (playerBlackjack && dealerBlackjack) {
+		addBalance(coinsFile, guildId, userId, state.bet);
+		resultText = `Beide blackjack! Gelijkspel — je krijgt je inzet (${formatCurrency(state.bet)}) terug.`;
+	} else if (playerBlackjack) {
+		const payout = Math.ceil(state.bet * 2.5);
+		addBalance(coinsFile, guildId, userId, payout);
+		net = payout - state.bet;
+		resultText = `🎉 Blackjack! Je wint **+${formatCurrency(net)}** (uitbetaling ${formatCurrency(payout)}).`;
 	} else {
-		addBalance(coinsFile, interaction.guildId, interaction.user.id, state.bet);
-		resultText = `Gelijkspel met ${playerTotal}. Je krijgt je inzet terug.`;
+		net = -state.bet;
+		resultText = `💥 Dealer heeft blackjack. Je verliest **${formatCurrency(state.bet)}**.`;
 	}
 
 	state.finished = true;
-	state.reason = reason;
-	const games = loadBlackjackGames();
-	games[state.gameId] = state;
-	saveBlackjackGames(games);
-
-	return {
-		embed: buildBlackjackEmbed(state, true, resultText),
-		components: [buildBlackjackButtons(state.gameId, true)],
-	};
+	state.netResult = net;
+	state.reason = 'initial-blackjack';
+	return { resultText, net };
 }
 
 module.exports = {
@@ -182,7 +179,7 @@ module.exports = {
 			subcommand
 				.setName('coinflip')
 				.setDescription('Gooi een munt en kies een kant')
-				.addIntegerOption(option => option.setName('amount').setDescription('Hoeveel coins je inzet').setRequired(true))
+				.addIntegerOption(option => option.setName('amount').setDescription('Hoeveel coins je inzet').setMinValue(1).setMaxValue(MAX_BET).setRequired(true))
 				.addStringOption(option =>
 					option
 						.setName('choice')
@@ -197,7 +194,7 @@ module.exports = {
 				subcommand
 					.setName('roulette')
 					.setDescription('Speel roulette met een kleur')
-					.addIntegerOption(option => option.setName('amount').setDescription('Hoeveel coins je inzet').setRequired(true))
+					.addIntegerOption(option => option.setName('amount').setDescription('Hoeveel coins je inzet').setMinValue(1).setMaxValue(MAX_BET).setRequired(true))
 					.addStringOption(option =>
 						option
 							.setName('choice')
@@ -213,32 +210,37 @@ module.exports = {
 				subcommand
 					.setName('blackjack')
 					.setDescription('Speel blackjack tegen de dealer')
-					.addIntegerOption(option => option.setName('amount').setDescription('Hoeveel coins je inzet').setRequired(true))),
+					.addIntegerOption(option => option.setName('amount').setDescription('Hoeveel coins je inzet').setMinValue(1).setMaxValue(MAX_BET).setRequired(true))),
 	async execute(interaction) {
 		const subcommand = interaction.options.getSubcommand();
 
 		if (!isEconomyEnabled(interaction.guildId, crownsConfigFile)) {
-			await interaction.reply({ content: 'Het economy-systeem staat uit. Een admin moet het inschakelen via /setup.', flags: 64 });
+			await interaction.reply({ content: '❌ Het economy-systeem staat uit. Een admin moet het inschakelen via `/setup → Economy`.', flags: 64 });
+			return;
+		}
+
+		const amount = interaction.options.getInteger('amount');
+		const balance = getBalance(coinsFile, interaction.guildId, interaction.user.id);
+		const validation = validateBet(amount, balance);
+		if (validation.error) {
+			await interaction.reply({ content: validation.error, flags: 64 });
 			return;
 		}
 
 		await interaction.deferReply();
 
 		if (subcommand === 'coinflip') {
-			const amount = interaction.options.getInteger('amount');
 			const choice = interaction.options.getString('choice');
-			const balance = getBalance(coinsFile, interaction.guildId, interaction.user.id);
 
-			if (balance < amount) {
-				await interaction.reply({ content: `Je hebt maar ${balance} coins.`, flags: 64 });
+			if (subtractBalance(coinsFile, interaction.guildId, interaction.user.id, amount) === null) {
+				await interaction.editReply({ content: '❌ Je balans is intussen veranderd; je hebt nu niet genoeg coins meer.' });
 				return;
 			}
 
-			subtractBalance(coinsFile, interaction.guildId, interaction.user.id, amount);
-			const initialCoinContent = `<@${interaction.user.id}> heeft ${formatCurrency(amount)} ingezet — ${buildCountdownText(10)}`;
+			const initialCoinContent = `<@${interaction.user.id}> heeft ${formatCurrency(amount)} ingezet — ${buildCountdownText(3)}`;
 			const replyMessage = await interaction.editReply({
 				content: initialCoinContent,
-				embeds: [buildGambleEmbed('Coinflip', buildCountdownText(10))],
+				embeds: [buildGambleEmbed('Coinflip', buildCountdownText(3))],
 			});
 
 			const result = Math.random() < 0.5 ? 'kop' : 'munt';
@@ -249,27 +251,24 @@ module.exports = {
 
 			await runResultCountdown(interaction.channel, replyMessage.id, replyMessage, 'Coinflip', () => (
 				won
-					? `Het werd **${result}**. Je wint en krijgt ${formatCurrency(amount * 2)} terug.`
-					: `Het werd **${result}**. Jammer, je bent ${formatCurrency(amount)} kwijt.`
-			), `<@${interaction.user.id}> heeft ${formatCurrency(amount)} ingezet —`, 10);
+					? `🎉 Het werd **${result}**. Je wint **+${formatCurrency(amount)}** (uitbetaling ${formatCurrency(amount * 2)}).`
+					: `💸 Het werd **${result}**. Jammer, je verliest **${formatCurrency(amount)}**.`
+			), `<@${interaction.user.id}>`, 3);
 			return;
 		}
 
 		if (subcommand === 'roulette') {
-			const amount = interaction.options.getInteger('amount');
 			const choice = interaction.options.getString('choice');
-			const balance = getBalance(coinsFile, interaction.guildId, interaction.user.id);
 
-			if (balance < amount) {
-				await interaction.reply({ content: `Je hebt maar ${balance} coins.`, flags: 64 });
+			if (subtractBalance(coinsFile, interaction.guildId, interaction.user.id, amount) === null) {
+				await interaction.editReply({ content: '❌ Je balans is intussen veranderd; je hebt nu niet genoeg coins meer.' });
 				return;
 			}
 
-			subtractBalance(coinsFile, interaction.guildId, interaction.user.id, amount);
-			const initialRouletteContent = `<@${interaction.user.id}> heeft ${formatCurrency(amount)} ingezet — ${buildCountdownText(10)}`;
+			const initialRouletteContent = `<@${interaction.user.id}> heeft ${formatCurrency(amount)} ingezet — ${buildCountdownText(3)}`;
 			const replyMessage = await interaction.editReply({
 				content: initialRouletteContent,
-				embeds: [buildGambleEmbed('Roulette', buildCountdownText(10))],
+				embeds: [buildGambleEmbed('Roulette', buildCountdownText(3))],
 			});
 
 			const result = getRouletteResult();
@@ -281,22 +280,17 @@ module.exports = {
 
 			await runResultCountdown(interaction.channel, replyMessage.id, replyMessage, 'Roulette', () => (
 				won
-					? `De bal viel op **${result}**. Je wint en krijgt ${formatCurrency(amount * multiplier)} terug.`
-					: `De bal viel op **${result}**. Jammer, je bent ${formatCurrency(amount)} kwijt.`
-			), `<@${interaction.user.id}> heeft ${formatCurrency(amount)} ingezet —`, 10);
+					? `🎉 De bal viel op **${result}**. Je wint **+${formatCurrency(amount * (multiplier - 1))}** (uitbetaling ${formatCurrency(amount * multiplier)}).`
+					: `💸 De bal viel op **${result}**. Jammer, je verliest **${formatCurrency(amount)}**.`
+			), `<@${interaction.user.id}>`, 3);
 			return;
 		}
 
 		if (subcommand === 'blackjack') {
-			const amount = interaction.options.getInteger('amount');
-			const balance = getBalance(coinsFile, interaction.guildId, interaction.user.id);
-
-			if (balance < amount) {
-				await interaction.reply({ content: `Je hebt maar ${balance} coins.`, flags: 64 });
+			if (subtractBalance(coinsFile, interaction.guildId, interaction.user.id, amount) === null) {
+				await interaction.editReply({ content: '❌ Je balans is intussen veranderd; je hebt nu niet genoeg coins meer.' });
 				return;
 			}
-
-			subtractBalance(coinsFile, interaction.guildId, interaction.user.id, amount);
 
 			const gameId = createGameId();
 			const state = {
@@ -322,10 +316,11 @@ module.exports = {
 			saveBlackjackGames(games);
 
 			if (isBlackjack(state.playerHand) || isBlackjack(state.dealerHand)) {
-				const result = await settleBlackjackGame(interaction, state, 'start');
+				const { resultText } = settleInitialBlackjack(state, interaction.guildId, interaction.user.id);
 				const replyMessage = await interaction.editReply({
-					embeds: [result.embed],
-					components: result.components,
+					content: `<@${interaction.user.id}> ${resultText}`,
+					embeds: [buildBlackjackEmbed(state, true, resultText)],
+					components: [buildBlackjackButtons(gameId, true)],
 				}).catch(error => {
 					console.error('Failed to send blackjack start reply:', error);
 					return null;
@@ -339,9 +334,14 @@ module.exports = {
 			}
 
 			const replyMessage = await interaction.editReply({
+				content: `<@${interaction.user.id}> blackjack gestart met inzet ${formatCurrency(amount)}.`,
 				embeds: [buildBlackjackEmbed(state, false, 'Blackjack is nu draaiende. Gebruik Hit of Stand.')],
 				components: [buildBlackjackButtons(gameId)],
+			}).catch(error => {
+				console.error('Failed to send blackjack start reply:', error);
+				return null;
 			});
+
 			if (replyMessage) {
 				state.messageId = replyMessage.id;
 			}
@@ -350,6 +350,6 @@ module.exports = {
 			return;
 		}
 
-		await interaction.reply({ content: 'Onbekende gamble actie.', flags: 64 });
+		await interaction.editReply({ content: '❌ Onbekende gamble actie.' }).catch(() => null);
 	},
 };

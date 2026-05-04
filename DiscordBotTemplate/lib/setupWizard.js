@@ -130,15 +130,23 @@ async function handleMenu(interaction, target) {
 
 		const row1 = new ActionRowBuilder().addComponents(
 			new ButtonBuilder().setCustomId('setup:economy:toggle').setLabel(enabledLabel).setStyle(enabledStyle),
-			new ButtonBuilder().setCustomId('setup:economy:rewards').setLabel('Bewerk work/daily').setStyle(ButtonStyle.Primary),
-			new ButtonBuilder().setCustomId('setup:economy:rob').setLabel('Bewerk rob/pay').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:economy:rewards').setLabel('Work/Daily bedragen').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:economy:dailyCooldown').setLabel('Daily cooldown').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:economy:rob').setLabel('Rob/Pay').setStyle(ButtonStyle.Primary),
 			new ButtonBuilder().setCustomId('setup:economy:spawn').setLabel('Crown spawn %').setStyle(ButtonStyle.Primary),
 		);
 
 		await interaction.update({
-			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('Economy').setDescription(
-				`Status: ${econ.enabled ? '✅ aan' : '❌ uit'}\nCrown spawn: ${econ.crownSpawnChance}%\nWork: ${econ.workMin}-${econ.workMax} (${econ.workCooldownMinutes}m)\nDaily: ${econ.dailyMin}-${econ.dailyMax} (${econ.dailyCooldownHours}h)\nPay tax: ${econ.payTaxPercent}%\nRob: ${econ.robSuccessChance}% kans, max ${econ.robMaxStealPercent}%, ${econ.robCooldownHours}h cooldown`,
-			)],
+			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('💰 Economy').setDescription([
+				`**Status:** ${econ.enabled ? '✅ aan' : '❌ uit'}`,
+				`**Crown spawn kans:** ${econ.crownSpawnChance}% per bericht`,
+				`**Work:** ${econ.workMin}-${econ.workMax} coins (cooldown ${econ.workCooldownMinutes}m)`,
+				`**Daily:** ${econ.dailyMin}-${econ.dailyMax} coins (cooldown ${econ.dailyCooldownHours}h)`,
+				`**Pay tax:** ${econ.payTaxPercent}%`,
+				`**Rob:** ${econ.robSuccessChance}% slaagkans, max ${econ.robMaxStealPercent}% buit, fail-boete ${econ.robFailFeePercent}%, cooldown ${econ.robCooldownHours}h, min slachtoffer-balans ${econ.robMinVictimBalance}`,
+				'',
+				'_Wijzig elke waarde via de knoppen hieronder._',
+			].join('\n'))],
 			components: [row1, backRow()],
 		}).catch(() => null);
 		return;
@@ -353,13 +361,22 @@ async function handleEconomyButton(interaction, action) {
 	}
 
 	if (action === 'rewards') {
-		const modal = new ModalBuilder().setCustomId('setup:modal:economyRewards').setTitle('Work / Daily instellingen');
+		const modal = new ModalBuilder().setCustomId('setup:modal:economyRewards').setTitle('Work / Daily bedragen');
 		modal.addComponents(
-			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('workMin').setLabel('Work min (kroontjes)').setStyle(TextInputStyle.Short).setValue(String(econ.workMin)).setRequired(true)),
-			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('workMax').setLabel('Work max (kroontjes)').setStyle(TextInputStyle.Short).setValue(String(econ.workMax)).setRequired(true)),
+			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('workMin').setLabel('Work min (coins)').setStyle(TextInputStyle.Short).setValue(String(econ.workMin)).setRequired(true)),
+			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('workMax').setLabel('Work max (coins)').setStyle(TextInputStyle.Short).setValue(String(econ.workMax)).setRequired(true)),
 			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('workCooldownMinutes').setLabel('Work cooldown (minuten)').setStyle(TextInputStyle.Short).setValue(String(econ.workCooldownMinutes)).setRequired(true)),
-			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dailyMin').setLabel('Daily min').setStyle(TextInputStyle.Short).setValue(String(econ.dailyMin)).setRequired(true)),
-			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dailyMax').setLabel('Daily max').setStyle(TextInputStyle.Short).setValue(String(econ.dailyMax)).setRequired(true)),
+			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dailyMin').setLabel('Daily min (coins)').setStyle(TextInputStyle.Short).setValue(String(econ.dailyMin)).setRequired(true)),
+			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dailyMax').setLabel('Daily max (coins)').setStyle(TextInputStyle.Short).setValue(String(econ.dailyMax)).setRequired(true)),
+		);
+		await interaction.showModal(modal);
+		return;
+	}
+
+	if (action === 'dailyCooldown') {
+		const modal = new ModalBuilder().setCustomId('setup:modal:economyDailyCooldown').setTitle('Daily cooldown');
+		modal.addComponents(
+			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('dailyCooldownHours').setLabel('Daily cooldown (uren)').setStyle(TextInputStyle.Short).setValue(String(econ.dailyCooldownHours)).setRequired(true)),
 		);
 		await interaction.showModal(modal);
 		return;
@@ -373,6 +390,15 @@ async function handleEconomyButton(interaction, action) {
 			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('robMaxStealPercent').setLabel('Rob max steal (%)').setStyle(TextInputStyle.Short).setValue(String(econ.robMaxStealPercent)).setRequired(true)),
 			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('robCooldownHours').setLabel('Rob cooldown (uren)').setStyle(TextInputStyle.Short).setValue(String(econ.robCooldownHours)).setRequired(true)),
 			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('robFailFeePercent').setLabel('Boete bij fail (%)').setStyle(TextInputStyle.Short).setValue(String(econ.robFailFeePercent)).setRequired(true)),
+		);
+		await interaction.showModal(modal);
+		return;
+	}
+
+	if (action === 'robMin') {
+		const modal = new ModalBuilder().setCustomId('setup:modal:economyRobMin').setTitle('Rob minimum slachtoffer-balans');
+		modal.addComponents(
+			new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('robMinVictimBalance').setLabel('Min balans slachtoffer (coins)').setStyle(TextInputStyle.Short).setValue(String(econ.robMinVictimBalance)).setRequired(true)),
 		);
 		await interaction.showModal(modal);
 		return;
@@ -404,15 +430,40 @@ async function handleModalSubmit(interaction) {
 	const econ = settings.economy;
 
 	if (kind === 'economyRewards') {
-		const patch = {
-			workMin: clampInt(interaction.fields.getTextInputValue('workMin'), 1, 1_000_000, econ.workMin),
-			workMax: clampInt(interaction.fields.getTextInputValue('workMax'), 1, 1_000_000, econ.workMax),
+		const workMin = clampInt(interaction.fields.getTextInputValue('workMin'), 1, 1_000_000, econ.workMin);
+		const workMax = clampInt(interaction.fields.getTextInputValue('workMax'), 1, 1_000_000, econ.workMax);
+		const dailyMin = clampInt(interaction.fields.getTextInputValue('dailyMin'), 1, 1_000_000, econ.dailyMin);
+		const dailyMax = clampInt(interaction.fields.getTextInputValue('dailyMax'), 1, 1_000_000, econ.dailyMax);
+		if (workMin > workMax) {
+			await interaction.reply({ content: '❌ Work min mag niet groter zijn dan work max.', flags: 64 });
+			return;
+		}
+		if (dailyMin > dailyMax) {
+			await interaction.reply({ content: '❌ Daily min mag niet groter zijn dan daily max.', flags: 64 });
+			return;
+		}
+		setEconomy(interaction.guildId, {
+			workMin,
+			workMax,
 			workCooldownMinutes: clampInt(interaction.fields.getTextInputValue('workCooldownMinutes'), 1, 10_080, econ.workCooldownMinutes),
-			dailyMin: clampInt(interaction.fields.getTextInputValue('dailyMin'), 1, 1_000_000, econ.dailyMin),
-			dailyMax: clampInt(interaction.fields.getTextInputValue('dailyMax'), 1, 1_000_000, econ.dailyMax),
-		};
-		setEconomy(interaction.guildId, patch);
-		await interaction.reply({ content: 'Work/Daily instellingen bijgewerkt.', flags: 64 });
+			dailyMin,
+			dailyMax,
+		});
+		await interaction.reply({ content: '✅ Work/Daily bedragen bijgewerkt.', flags: 64 });
+		return;
+	}
+
+	if (kind === 'economyDailyCooldown') {
+		const v = clampInt(interaction.fields.getTextInputValue('dailyCooldownHours'), 1, 720, econ.dailyCooldownHours);
+		setEconomy(interaction.guildId, { dailyCooldownHours: v });
+		await interaction.reply({ content: `✅ Daily cooldown ingesteld op **${v} uur**.`, flags: 64 });
+		return;
+	}
+
+	if (kind === 'economyRobMin') {
+		const v = clampInt(interaction.fields.getTextInputValue('robMinVictimBalance'), 0, 1_000_000, econ.robMinVictimBalance);
+		setEconomy(interaction.guildId, { robMinVictimBalance: v });
+		await interaction.reply({ content: `✅ Min slachtoffer-balans is nu **${v} coins**.`, flags: 64 });
 		return;
 	}
 

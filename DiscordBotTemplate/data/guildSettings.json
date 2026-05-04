@@ -58,6 +58,17 @@
     },
     "crownshop": {
       "xpPerCrown": 25
+    },
+    "challenge": {
+      "enabled": false,
+      "postHour": 9,
+      "rewardKroontjes": 10,
+      "customPuzzles": []
+    },
+    "hallOfFame": {
+      "enabled": false,
+      "postDay": 1,
+      "postHour": 10
     }
   }
 }

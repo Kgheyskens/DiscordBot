@@ -125,14 +125,84 @@ function buildSet(words, opts = {}) {
 	return out;
 }
 
+const fs = require('fs');
+const path = require('path');
+
 const WORDLE_SET = buildSet(WORDLE_WORDS, { length: 5 });
 const HANGMAN_SET = buildSet(HANGMAN_WORDS);
+
+const WORDLE_DICTIONARY = new Set(WORDLE_SET);
+
+function loadDictionaryFile(filePath, length) {
+	try {
+		const raw = fs.readFileSync(filePath, 'utf8');
+		const lines = raw.split(/\r?\n/);
+		for (const line of lines) {
+			const cleaned = String(line || '').toLowerCase().replace(/[^a-z]/g, '');
+			if (!cleaned) continue;
+			if (length && cleaned.length !== length) continue;
+			WORDLE_DICTIONARY.add(cleaned);
+		}
+	} catch (err) {
+		console.warn(`[wordList] Could not load dictionary ${filePath}:`, err.message);
+	}
+}
+
+loadDictionaryFile(path.join(__dirname, '..', 'data', 'wordlist5_nl.txt'), 5);
+
+async function isValidWordleWordOnline(word) {
+	const cleaned = String(word || '').toLowerCase().replace(/[^a-z]/g, '');
+	if (cleaned.length !== 5) return false;
+	if (typeof fetch !== 'function') return false;
+
+	const TIMEOUT_MS = 1500;
+	const tryFetch = async url => {
+		try {
+			const res = await fetch(url, {
+				method: 'HEAD',
+				signal: AbortSignal.timeout?.(TIMEOUT_MS),
+			});
+			return res.ok;
+		} catch {
+			return false;
+		}
+	};
+
+	const urls = [
+		`https://en.wiktionary.org/wiki/${encodeURIComponent(cleaned)}`,
+		`https://nl.wiktionary.org/wiki/${encodeURIComponent(cleaned)}`,
+	];
+
+	return new Promise(resolve => {
+		let pending = urls.length;
+		let resolved = false;
+		for (const url of urls) {
+			tryFetch(url).then(ok => {
+				if (resolved) return;
+				if (ok) {
+					resolved = true;
+					resolve(true);
+					return;
+				}
+				pending -= 1;
+				if (pending === 0) resolve(false);
+			});
+		}
+	});
+}
 
 function isValidWord(game, word) {
 	const cleaned = String(word || '').toLowerCase().replace(/[^a-z]/g, '');
 	if (!cleaned) return false;
-	if (game === 'wordle') return WORDLE_SET.has(cleaned);
+	if (game === 'wordle') return WORDLE_DICTIONARY.has(cleaned);
 	if (game === 'hangman') return HANGMAN_SET.has(cleaned);
+	return true;
+}
+
+function addWordleDictionaryWord(word) {
+	const cleaned = String(word || '').toLowerCase().replace(/[^a-z]/g, '');
+	if (cleaned.length !== 5) return false;
+	WORDLE_DICTIONARY.add(cleaned);
 	return true;
 }
 
@@ -146,6 +216,8 @@ function getHangmanWords() {
 
 module.exports = {
 	isValidWord,
+	isValidWordleWordOnline,
+	addWordleDictionaryWord,
 	getWordleWords,
 	getHangmanWords,
 };
