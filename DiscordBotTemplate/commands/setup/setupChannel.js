@@ -7,6 +7,7 @@ module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('setup-channel')
 		.setDescription('Snel een channel instellen voor een feature')
+		.setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 		.setDMPermission(false)
 		.addStringOption(opt =>
 			opt.setName('feature').setDescription('Welk feature?').setRequired(true)

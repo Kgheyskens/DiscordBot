@@ -35,7 +35,7 @@ const {
 	TextInputStyle,
 } = require('discord.js');
 const getMeme = require('./commands/getMeme/getMeme');
-const { readJson, writeJson } = require('./lib/jsonStore');
+const { readJson, writeJson, preloadDirectory } = require('./lib/jsonStore');
 const { processLevelGain, getRequiredXp, resolveLevelsChannel } = require('./lib/levelingService');
 const { addBalance: addCrownBalance, getBalance: getCrownBalance, getCrownConfig } = require('./lib/crownService');
 const { addBalance: addCoinBalance, getBalance: getCoinBalance } = require('./lib/coinService');
@@ -1046,6 +1046,15 @@ client.on(Events.MessageCreate, async message => {
 	}
 });
 
+client.on(Events.GuildCreate, async guild => {
+	try {
+		console.log(`Bot toegevoegd aan nieuwe server ${guild.name} (${guild.id}) — commands deployen...`);
+		await deployCommands.deployToGuild(guild.id);
+	} catch (err) {
+		console.error('GuildCreate command deploy failed:', err);
+	}
+});
+
 client.on(Events.GuildMemberAdd, async member => {
 	try {
 		await sendWelcomeMessage(member);
@@ -1562,4 +1571,12 @@ client.on(Events.InteractionCreate, async interaction => {
 	}
 });
 
-client.login(BOT_TOKEN);
+(async () => {
+	try {
+		// Preload data uit MongoDB (en seed bestaande JSON-bestanden als ze nog niet in Mongo staan)
+		await preloadDirectory(path.join(__dirname, 'data'));
+	} catch (err) {
+		console.error('preloadDirectory failed (continuing with file fallback):', err.message);
+	}
+	await client.login(BOT_TOKEN);
+})();

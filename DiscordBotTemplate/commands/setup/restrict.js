@@ -5,6 +5,7 @@ module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('restrict')
 		.setDescription('Beperk waar/door wie een command gebruikt mag worden')
+		.setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 		.setDMPermission(false)
 		.addSubcommand(sub =>
 			sub.setName('set').setDescription('Stel een restrictie in')

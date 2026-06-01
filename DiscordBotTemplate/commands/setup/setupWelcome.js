@@ -5,6 +5,7 @@ module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('setup-welcome')
 		.setDescription('Configureer welcome berichten')
+		.setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 		.setDMPermission(false)
 		.addSubcommand(sub => sub.setName('toggle').setDescription('Zet welcome aan/uit'))
 		.addSubcommand(sub =>

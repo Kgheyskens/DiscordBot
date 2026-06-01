@@ -5,7 +5,7 @@ const path = require('path');
 const BOT_TOKEN = process.env.CLIENT_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-const deploy = async () => {
+function loadCommandPayload() {
     const commands = [];
     const foldersPath = path.join(__dirname, '../commands');
     const commandFolders = fs.readdirSync(foldersPath);
@@ -23,11 +23,27 @@ const deploy = async () => {
             }
         }
     }
+    return commands;
+}
 
+async function deployToGuild(rest, guildId, commands) {
+    try {
+        const guildData = await rest.put(
+            Routes.applicationGuildCommands(CLIENT_ID, guildId),
+            { body: commands },
+        );
+        console.log(`Guild-deploy: ${guildData.length} commands in guild ${guildId}.`);
+        return true;
+    } catch (err) {
+        console.error(`Guild-deploy mislukt voor guild ${guildId}:`, err.message || err);
+        return false;
+    }
+}
+
+const deploy = async () => {
+    const commands = loadCommandPayload();
     const rest = new REST().setToken(BOT_TOKEN);
 
-    // Bepaal welke guilds direct geüpdatet moeten worden (instant zichtbaar).
-    // DEV_GUILD_IDS is een komma-separated lijst. Voor backwards compat ook GUILD_ID.
     const devGuildIds = (process.env.DEV_GUILD_IDS || process.env.GUILD_ID || '')
         .split(',')
         .map(id => id.trim())
@@ -35,32 +51,32 @@ const deploy = async () => {
 
     (async () => {
         try {
-            // 1) Altijd globaal deployen — werkt voor elke server waar de bot in zit
-            //    (Discord cache kan tot 1 uur duren om dit overal te tonen)
-            console.log(`Globally refreshing ${commands.length} application (/) commands...`);
-            const globalData = await rest.put(
-                Routes.applicationCommands(CLIENT_ID),
-                { body: commands },
-            );
-            console.log(`✅ Globally reloaded ${globalData.length} application (/) commands.`);
-
-            // 2) Voor de servers in DEV_GUILD_IDS doen we ook een guild-deploy
-            //    Die verschijnt METEEN — handig om te testen zonder te wachten.
-            for (const guildId of devGuildIds) {
+            // Wis globale commands eenmalig om dubbele weergave te voorkomen.
+            // We deployen ALLEEN guild-scoped (instant) — dit is bewust gekozen.
+            const wipeGlobal = process.env.WIPE_GLOBAL_COMMANDS !== 'false';
+            if (wipeGlobal) {
                 try {
-                    const guildData = await rest.put(
-                        Routes.applicationGuildCommands(CLIENT_ID, guildId),
-                        { body: commands },
-                    );
-                    console.log(`✅ Guild-deploy: ${guildData.length} commands in guild ${guildId}.`);
+                    await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
+                    console.log('Global commands gewist (dubbele entries verdwijnen binnen ~1 uur).');
                 } catch (err) {
-                    console.error(`❌ Guild-deploy mislukt voor guild ${guildId}:`, err.message || err);
+                    console.error('Globale wipe mislukt:', err.message || err);
                 }
+            }
+
+            console.log(`Deploying ${commands.length} commands naar ${devGuildIds.length} guild(s)...`);
+            for (const guildId of devGuildIds) {
+                await deployToGuild(rest, guildId, commands);
             }
         } catch (error) {
             console.error('Deploy failed:', error);
         }
     })();
 }
+
+deploy.deployToGuild = async function (guildId) {
+    const commands = loadCommandPayload();
+    const rest = new REST().setToken(BOT_TOKEN);
+    return deployToGuild(rest, guildId, commands);
+};
 
 module.exports = deploy;

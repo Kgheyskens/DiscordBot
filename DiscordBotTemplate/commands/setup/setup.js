@@ -112,6 +112,7 @@ module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('setup')
 		.setDescription('Configureer de bot voor deze server')
+		.setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 		.setDMPermission(false),
 	async execute(interaction) {
 		if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
