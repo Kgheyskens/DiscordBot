@@ -888,13 +888,10 @@ function buildTicketModal(ticketType) {
 }
 
 async function createTicketChannel(interaction, ticketType, fields) {
-	const panelConfig = getGuildConfig(ticketPanelsFile, interaction.guildId, null);
-	if (!panelConfig) {
-		return null;
-	}
-
-	const supportRoleId = panelConfig.supportRoleId || null;
-	const categoryId = panelConfig.categoryId || null;
+	const panelConfig = getGuildConfig(ticketPanelsFile, interaction.guildId, null) || {};
+	const guildSettings = require('./lib/guildSettings').getSettings(interaction.guildId);
+	const supportRoleId = panelConfig.supportRoleId || guildSettings.roles?.ticketSupport || null;
+	const categoryId = panelConfig.categoryId || guildSettings.channels?.ticketCategory || null;
 	const safeName = interaction.user.username.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20) || 'user';
 	const channelName = `ticket-${ticketType}-${safeName}`.slice(0, 90);
 
@@ -1444,16 +1441,26 @@ client.on(Events.InteractionCreate, async interaction => {
 					await interaction.reply({ content: '❌ Deze rol is intussen niet meer beschikbaar voor sollicitatie.', flags: 64 });
 					return;
 				}
-				ticketFields.position = app.label + (app.roleId ? ` (${app.roleId ? `<@&${app.roleId}>` : ''})` : '');
+				ticketFields.position = app.roleId ? `${app.label} (<@&${app.roleId}>)` : app.label;
 			}
 
-			const ticketChannel = await createTicketChannel(interaction, ticketType, ticketFields);
-			if (!ticketChannel) {
-				await interaction.reply({ content: 'Kon ticket niet aanmaken.', flags: 64 });
+			await interaction.deferReply({ flags: 64 }).catch(() => null);
+
+			let ticketChannel;
+			try {
+				ticketChannel = await createTicketChannel(interaction, ticketType, ticketFields);
+			} catch (err) {
+				console.error('Failed to create ticket channel:', err);
+				await interaction.editReply({ content: '❌ Er ging iets mis bij het aanmaken van het ticket. Controleer of het ticket-panel correct is ingesteld via `/setup → Tickets`.' }).catch(() => null);
 				return;
 			}
 
-			await interaction.reply({ content: `Ticket aangemaakt: ${ticketChannel}`, flags: 64 });
+			if (!ticketChannel) {
+				await interaction.editReply({ content: '❌ Kon ticket niet aanmaken. Heb je het ticket-panel al geplaatst via `/setup → Tickets → Plaats panel`?' }).catch(() => null);
+				return;
+			}
+
+			await interaction.editReply({ content: `✅ Ticket aangemaakt: ${ticketChannel}` }).catch(() => null);
 			return;
 		}
 
