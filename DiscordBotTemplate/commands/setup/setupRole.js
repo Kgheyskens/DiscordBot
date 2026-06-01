@@ -7,7 +7,6 @@ module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('setup-role')
 		.setDescription('Snel een rol instellen voor een feature')
-		.setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 		.setDMPermission(false)
 		.addStringOption(opt =>
 			opt.setName('feature').setDescription('Welk feature?').setRequired(true)

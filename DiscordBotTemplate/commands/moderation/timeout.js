@@ -5,7 +5,6 @@ module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('timeout')
 		.setDescription('Geef een lid een time-out')
-		.setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
 		.setDMPermission(false)
 		.addUserOption(opt => opt.setName('user').setDescription('Wie time-out').setRequired(true))
 		.addIntegerOption(opt => opt.setName('minuten').setDescription('Hoelang in minuten (0 = opheffen)').setMinValue(0).setMaxValue(40320).setRequired(true))

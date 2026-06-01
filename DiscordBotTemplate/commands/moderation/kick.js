@@ -5,7 +5,6 @@ module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('kick')
 		.setDescription('Kick een lid uit de server')
-		.setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
 		.setDMPermission(false)
 		.addUserOption(opt => opt.setName('user').setDescription('Wie kicken').setRequired(true))
 		.addStringOption(opt => opt.setName('reden').setDescription('Reden').setRequired(false)),

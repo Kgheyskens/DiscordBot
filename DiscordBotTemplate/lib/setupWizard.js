@@ -66,7 +66,45 @@ const ROLE_KEYS = [
 
 const RESTRICTABLE_COMMANDS = [
 	'gamble', 'work', 'daily', 'crownshop', 'shop', 'pay', 'rob', 'leaderboard',
-	'balance', 'level', 'minigame', 'getmeme', 'twitch',
+	'balance', 'level', 'minigame', 'meme', 'twitchlink',
+	'afk', 'afkcheck', 'menu', 'redembed', 'editembed', 'challenge',
+	'ban', 'kick', 'timeout',
+	'levelreward', 'levelroles', 'resetxp', 'givexp', 'testlevelup',
+	'setlevelchannel', 'setwelcomechannel', 'setcountingchannel',
+	'crownsystem', 'rolemenu', 'ticketpanel',
+];
+
+const RESTRICT_CATEGORIES = [
+	{
+		id: 'economy',
+		label: '💰 Economy',
+		commands: ['gamble', 'work', 'daily', 'crownshop', 'shop', 'pay', 'rob', 'leaderboard', 'balance'],
+	},
+	{
+		id: 'fun',
+		label: '🎮 Fun & Games',
+		commands: ['minigame', 'challenge', 'meme', 'menu'],
+	},
+	{
+		id: 'level',
+		label: '📈 Levels',
+		commands: ['level', 'levelreward', 'levelroles', 'resetxp', 'givexp', 'testlevelup', 'setlevelchannel'],
+	},
+	{
+		id: 'utility',
+		label: '🛠️ Utility',
+		commands: ['afk', 'afkcheck', 'redembed', 'editembed', 'twitchlink', 'rolemenu'],
+	},
+	{
+		id: 'moderation',
+		label: '🛡️ Moderation',
+		commands: ['ban', 'kick', 'timeout'],
+	},
+	{
+		id: 'admin',
+		label: '⚙️ Admin/Config',
+		commands: ['crownsystem', 'ticketpanel', 'setwelcomechannel', 'setcountingchannel'],
+	},
 ];
 
 function isAdmin(interaction) {
@@ -302,16 +340,106 @@ async function handleMenu(interaction, target) {
 	}
 
 	if (target === 'restrict') {
-		const select = new StringSelectMenuBuilder()
-			.setCustomId('setup:select:restrictCommand')
-			.setPlaceholder('Kies welk command je wilt beperken')
-			.addOptions(RESTRICTABLE_COMMANDS.map(name => ({ label: `/${name}`, value: name })));
-		await interaction.update({
-			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('Command-restricties').setDescription('Kies een command om kanalen/rollen voor in te stellen.')],
-			components: [new ActionRowBuilder().addComponents(select), backRow()],
-		}).catch(() => null);
+		await showRestrictCategories(interaction);
 		return;
 	}
+
+	if (target === 'restrictCat') {
+		const categoryId = interaction.customId.split(':')[3];
+		await showRestrictCommandList(interaction, categoryId);
+		return;
+	}
+}
+
+async function showRestrictCategories(interaction) {
+	const allRules = listRules(interaction.guildId);
+	const ruleCount = Object.keys(allRules).length;
+
+	const lines = RESTRICT_CATEGORIES.map(cat => {
+		const activeInCat = cat.commands.filter(c => allRules[c]).length;
+		return `• **${cat.label}** — ${cat.commands.length} commands${activeInCat ? ` (${activeInCat} met restrictie)` : ''}`;
+	}).join('\n');
+
+	const rows = [];
+	for (let i = 0; i < RESTRICT_CATEGORIES.length; i += 5) {
+		const slice = RESTRICT_CATEGORIES.slice(i, i + 5);
+		rows.push(new ActionRowBuilder().addComponents(
+			slice.map(cat => new ButtonBuilder()
+				.setCustomId(`setup:menu:restrictCat:${cat.id}`)
+				.setLabel(cat.label)
+				.setStyle(ButtonStyle.Primary)),
+		));
+	}
+	rows.push(backRow());
+
+	const embed = new EmbedBuilder()
+		.setColor(0xb40f0f)
+		.setTitle('🔒 Command-restricties')
+		.setDescription([
+			'Stel hier in **wie** welke commands mag gebruiken en **waar**.',
+			'',
+			'**Hoe werkt het?**',
+			'• Standaard zijn alle commands beschikbaar voor iedereen.',
+			'• Per command kun je instellen:',
+			'  - **Admin-only**: enkel admins kunnen het gebruiken.',
+			'  - **Rollen**: enkel deze rollen mogen het gebruiken.',
+			'  - **Kanalen**: alleen in/uit bepaalde kanalen.',
+			'',
+			`**Status:** ${ruleCount} command(s) hebben een actieve restrictie.`,
+			'',
+			'**Kies een categorie:**',
+			lines,
+		].join('\n'));
+
+	const payload = { embeds: [embed], components: rows };
+	if (interaction.update) await interaction.update(payload).catch(() => null);
+	else await interaction.reply({ ...payload, flags: 64 }).catch(() => null);
+}
+
+async function showRestrictCommandList(interaction, categoryId) {
+	const cat = RESTRICT_CATEGORIES.find(c => c.id === categoryId);
+	if (!cat) {
+		await interaction.reply({ content: 'Onbekende categorie.', flags: 64 });
+		return;
+	}
+
+	const allRules = listRules(interaction.guildId);
+	const lines = cat.commands.map(name => {
+		const rule = allRules[name];
+		if (!rule) return `• \`/${name}\` — _iedereen, overal_`;
+		const parts = [];
+		if (rule.adminOnly) parts.push('🔒 admin-only');
+		if (rule.allowedRoles?.length) parts.push(`👥 ${rule.allowedRoles.length} rol(len)`);
+		if (rule.mode === 'allowlist') parts.push(`✅ ${rule.allowedChannels?.length || 0} kanaal/kanalen`);
+		else if (rule.mode === 'blocklist') parts.push(`🚫 ${rule.blockedChannels?.length || 0} geblokkeerd`);
+		return `• \`/${name}\` — ${parts.length ? parts.join(' • ') : '_iedereen, overal_'}`;
+	}).join('\n');
+
+	const select = new StringSelectMenuBuilder()
+		.setCustomId('setup:select:restrictCommand')
+		.setPlaceholder('Kies het command om in te stellen')
+		.addOptions(cat.commands.slice(0, 25).map(name => {
+			const rule = allRules[name];
+			const tag = rule?.adminOnly ? ' (admin-only)' : rule ? ' (beperkt)' : '';
+			return { label: `/${name}${tag}`.slice(0, 100), value: name };
+		}));
+
+	const navRow = new ActionRowBuilder().addComponents(
+		new ButtonBuilder().setCustomId('setup:menu:restrict').setLabel('Terug naar categorieën').setStyle(ButtonStyle.Secondary),
+		new ButtonBuilder().setCustomId('setup:menu:back').setLabel('Hoofdmenu').setStyle(ButtonStyle.Secondary),
+	);
+
+	const embed = new EmbedBuilder()
+		.setColor(0xb40f0f)
+		.setTitle(`🔒 Restricties — ${cat.label}`)
+		.setDescription(`Kies hieronder welk command je wilt aanpassen.\n\n${lines}`);
+
+	const payload = {
+		embeds: [embed],
+		components: [new ActionRowBuilder().addComponents(select), navRow],
+	};
+	if (interaction.update) await interaction.update(payload).catch(() => null);
+	else await interaction.reply({ ...payload, flags: 64 }).catch(() => null);
 }
 
 async function handleSelect(interaction) {
@@ -370,47 +498,93 @@ async function handleSelect(interaction) {
 
 	if (kind === 'restrictCommand') {
 		const cmd = interaction.values[0];
-		const rule = getRule(interaction.guildId, cmd);
-		const modeSelect = new StringSelectMenuBuilder()
-			.setCustomId(`setup:restrict:mode:${cmd}`)
-			.setPlaceholder(`Kies modus (huidig: ${rule.mode})`)
-			.addOptions([
-				{ label: 'Overal toegestaan', value: 'anywhere', default: rule.mode === 'anywhere' },
-				{ label: 'Allowlist (alleen bepaalde channels)', value: 'allowlist', default: rule.mode === 'allowlist' },
-				{ label: 'Blocklist (geblokkeerd in bepaalde channels)', value: 'blocklist', default: rule.mode === 'blocklist' },
-			]);
-		const channelSelect = new ChannelSelectMenuBuilder()
-			.setCustomId(`setup:restrict:channels:${cmd}`)
-			.setPlaceholder('Selecteer channels (allow/block)')
-			.setMinValues(0)
-			.setMaxValues(10)
-			.setChannelTypes([ChannelType.GuildText, ChannelType.GuildAnnouncement]);
-		const roleSelect = new RoleSelectMenuBuilder()
-			.setCustomId(`setup:restrict:roles:${cmd}`)
-			.setPlaceholder('Selecteer rollen die dit command mogen gebruiken (leeg = iedereen)')
-			.setMinValues(0)
-			.setMaxValues(10);
-		const clearRow = new ActionRowBuilder().addComponents(
-			new ButtonBuilder().setCustomId(`setup:restrict:clear:${cmd}`).setLabel('Wis restrictie').setStyle(ButtonStyle.Danger),
-		);
-
-		const allowedList = rule.allowedChannels.map(id => `<#${id}>`).join(', ') || '_geen_';
-		const blockedList = rule.blockedChannels.map(id => `<#${id}>`).join(', ') || '_geen_';
-		const roleList = rule.allowedRoles.map(id => `<@&${id}>`).join(', ') || '_iedereen_';
-
-		await interaction.update({
-			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle(`Restrictie: /${cmd}`).setDescription(
-				`Mode: **${rule.mode}**\nAllowed channels: ${allowedList}\nBlocked channels: ${blockedList}\nAllowed roles: ${roleList}`,
-			)],
-			components: [
-				new ActionRowBuilder().addComponents(modeSelect),
-				new ActionRowBuilder().addComponents(channelSelect),
-				new ActionRowBuilder().addComponents(roleSelect),
-				clearRow,
-				backRow(),
-			],
-		}).catch(() => null);
+		await showRestrictDetail(interaction, cmd);
 		return;
+	}
+}
+
+async function showRestrictDetail(interaction, cmd, options = {}) {
+	const rule = getRule(interaction.guildId, cmd);
+	const category = RESTRICT_CATEGORIES.find(c => c.commands.includes(cmd));
+	const backCategoryId = category?.id;
+
+	const modeSelect = new StringSelectMenuBuilder()
+		.setCustomId(`setup:restrict:mode:${cmd}`)
+		.setPlaceholder(`Kanaal-modus (huidig: ${rule.mode})`)
+		.addOptions([
+			{ label: 'Overal toegestaan', value: 'anywhere', default: rule.mode === 'anywhere' },
+			{ label: 'Alleen in bepaalde kanalen (allowlist)', value: 'allowlist', default: rule.mode === 'allowlist' },
+			{ label: 'Geblokkeerd in bepaalde kanalen (blocklist)', value: 'blocklist', default: rule.mode === 'blocklist' },
+		]);
+	const channelSelect = new ChannelSelectMenuBuilder()
+		.setCustomId(`setup:restrict:channels:${cmd}`)
+		.setPlaceholder(rule.mode === 'blocklist' ? 'Selecteer kanalen om te blokkeren' : 'Selecteer kanalen waar het mag (leeg = overal)')
+		.setMinValues(0)
+		.setMaxValues(10)
+		.setChannelTypes([ChannelType.GuildText, ChannelType.GuildAnnouncement]);
+	const roleSelect = new RoleSelectMenuBuilder()
+		.setCustomId(`setup:restrict:roles:${cmd}`)
+		.setPlaceholder('Selecteer rollen die dit mogen gebruiken (leeg = iedereen)')
+		.setMinValues(0)
+		.setMaxValues(10);
+
+	const toggleRow = new ActionRowBuilder().addComponents(
+		new ButtonBuilder()
+			.setCustomId(`setup:restrict:adminOnly:${cmd}`)
+			.setLabel(rule.adminOnly ? '🔓 Admin-only UIT' : '🔒 Admin-only AAN')
+			.setStyle(rule.adminOnly ? ButtonStyle.Secondary : ButtonStyle.Danger),
+		new ButtonBuilder()
+			.setCustomId(`setup:restrict:clear:${cmd}`)
+			.setLabel('🗑️ Wis alle restricties')
+			.setStyle(ButtonStyle.Danger),
+	);
+
+	const navRow = new ActionRowBuilder().addComponents(
+		new ButtonBuilder()
+			.setCustomId(backCategoryId ? `setup:menu:restrictCat:${backCategoryId}` : 'setup:menu:restrict')
+			.setLabel('Terug naar lijst')
+			.setStyle(ButtonStyle.Secondary),
+		new ButtonBuilder().setCustomId('setup:menu:restrict').setLabel('Restricties hoofdmenu').setStyle(ButtonStyle.Secondary),
+		new ButtonBuilder().setCustomId('setup:menu:back').setLabel('Hoofdmenu').setStyle(ButtonStyle.Secondary),
+	);
+
+	const allowedList = rule.allowedChannels.map(id => `<#${id}>`).join(', ') || '_geen_';
+	const blockedList = rule.blockedChannels.map(id => `<#${id}>`).join(', ') || '_geen_';
+	const roleList = rule.allowedRoles.map(id => `<@&${id}>`).join(', ') || '_iedereen_';
+
+	const embed = new EmbedBuilder()
+		.setColor(0xb40f0f)
+		.setTitle(`🔒 Restrictie: /${cmd}`)
+		.setDescription([
+			'Stel hier in wie dit command mag gebruiken en in welke kanalen.',
+			'',
+			`**Admin-only:** ${rule.adminOnly ? '🔒 ja' : '❌ nee'}`,
+			`**Kanaal-modus:** ${rule.mode}`,
+			`**Toegestane kanalen:** ${allowedList}`,
+			`**Geblokkeerde kanalen:** ${blockedList}`,
+			`**Toegestane rollen:** ${roleList}`,
+			'',
+			'_Tip: laat de rol-selectie leeg om iedereen toe te staan. Admin-only overruled altijd._',
+		].join('\n'));
+
+	const payload = {
+		embeds: [embed],
+		components: [
+			new ActionRowBuilder().addComponents(modeSelect),
+			new ActionRowBuilder().addComponents(channelSelect),
+			new ActionRowBuilder().addComponents(roleSelect),
+			toggleRow,
+			navRow,
+		],
+	};
+	if (options.flash) payload.content = options.flash;
+
+	if (interaction.replied || interaction.deferred) {
+		await interaction.editReply(payload).catch(() => null);
+	} else if (interaction.update) {
+		await interaction.update(payload).catch(() => null);
+	} else {
+		await interaction.reply({ ...payload, flags: 64 }).catch(() => null);
 	}
 }
 
@@ -638,31 +812,35 @@ async function handleRestrictInteraction(interaction) {
 	if (action === 'mode') {
 		const mode = interaction.values[0];
 		setRule(interaction.guildId, cmd, { mode });
-		await interaction.reply({ content: `Mode voor /${cmd} ingesteld op **${mode}**.`, flags: 64 });
+		await showRestrictDetail(interaction, cmd, { flash: `✅ Kanaal-modus voor /${cmd} ingesteld op **${mode}**.` });
 		return;
 	}
 	if (action === 'channels') {
 		const rule = getRule(interaction.guildId, cmd);
 		const ids = interaction.values || [];
-		if (rule.mode === 'allowlist') {
-			setRule(interaction.guildId, cmd, { allowedChannels: ids });
-		} else if (rule.mode === 'blocklist') {
+		if (rule.mode === 'blocklist') {
 			setRule(interaction.guildId, cmd, { blockedChannels: ids });
 		} else {
 			setRule(interaction.guildId, cmd, { allowedChannels: ids });
 		}
-		await interaction.reply({ content: `Channels voor /${cmd} bijgewerkt (${ids.length}).`, flags: 64 });
+		await showRestrictDetail(interaction, cmd, { flash: `✅ Kanalen voor /${cmd} bijgewerkt (${ids.length}).` });
 		return;
 	}
 	if (action === 'roles') {
 		const ids = interaction.values || [];
 		setRule(interaction.guildId, cmd, { allowedRoles: ids });
-		await interaction.reply({ content: `Rollen voor /${cmd} bijgewerkt (${ids.length}).`, flags: 64 });
+		await showRestrictDetail(interaction, cmd, { flash: `✅ Rollen voor /${cmd} bijgewerkt (${ids.length}).` });
+		return;
+	}
+	if (action === 'adminOnly') {
+		const rule = getRule(interaction.guildId, cmd);
+		setRule(interaction.guildId, cmd, { adminOnly: !rule.adminOnly });
+		await showRestrictDetail(interaction, cmd, { flash: rule.adminOnly ? `🔓 /${cmd} is niet meer admin-only.` : `🔒 /${cmd} is nu alleen voor admins.` });
 		return;
 	}
 	if (action === 'clear') {
 		clearRule(interaction.guildId, cmd);
-		await interaction.reply({ content: `Restrictie voor /${cmd} verwijderd.`, flags: 64 });
+		await showRestrictDetail(interaction, cmd, { flash: `🗑️ Alle restricties voor /${cmd} verwijderd.` });
 	}
 }
 
@@ -1562,7 +1740,7 @@ async function dispatch(interaction) {
 			if (section === 'welcome') { await handleWelcomeButton(interaction, action); return true; }
 			if (section === 'counting') { await handleCountingButton(interaction, action); return true; }
 			if (section === 'tickets' && action === 'postpanel') { await postTicketPanel(interaction); return true; }
-			if (section === 'restrict' && action === 'clear') { await handleRestrictInteraction(interaction); return true; }
+			if (section === 'restrict' && (action === 'clear' || action === 'adminOnly')) { await handleRestrictInteraction(interaction); return true; }
 			if (section === 'rolecats') { await handleRoleCatsButton(interaction, action); return true; }
 			if (section === 'rolecat') { await handleRoleCatInteraction(interaction); return true; }
 			if (section === 'minigame') { await handleMinigameInteraction(interaction); return true; }

@@ -22,7 +22,6 @@ module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('setup-economy')
 		.setDescription('Stel een economy waarde direct in')
-		.setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 		.setDMPermission(false)
 		.addStringOption(opt =>
 			opt.setName('field').setDescription('Welk veld?').setRequired(true)
