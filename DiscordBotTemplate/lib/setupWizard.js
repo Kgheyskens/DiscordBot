@@ -24,6 +24,10 @@ const {
 	setCrownshop,
 	setChallenge,
 	setHallOfFame,
+	setModeration,
+	setBirthdays,
+	setReminders,
+	setBumpReminders,
 	getApplicationRoles,
 	addApplicationRole,
 	updateApplicationRole,
@@ -72,13 +76,14 @@ const RESTRICTABLE_COMMANDS = [
 	'levelreward', 'levelroles', 'resetxp', 'givexp', 'testlevelup',
 	'setlevelchannel', 'setwelcomechannel', 'setcountingchannel',
 	'crownsystem', 'rolemenu', 'ticketpanel',
+	'slots', 'coinflip', 'inventory',
 ];
 
 const RESTRICT_CATEGORIES = [
 	{
 		id: 'economy',
 		label: '💰 Economy',
-		commands: ['gamble', 'work', 'daily', 'crownshop', 'shop', 'pay', 'rob', 'leaderboard', 'balance'],
+		commands: ['gamble', 'slots', 'coinflip', 'work', 'daily', 'crownshop', 'shop', 'pay', 'rob', 'leaderboard', 'balance', 'inventory'],
 	},
 	{
 		id: 'fun',
@@ -347,6 +352,81 @@ async function handleMenu(interaction, target) {
 	if (target === 'restrictCat') {
 		const categoryId = interaction.customId.split(':')[3];
 		await showRestrictCommandList(interaction, categoryId);
+		return;
+	}
+
+	if (target === 'moderation') {
+		const settings = getSettings(interaction.guildId);
+		const mod = settings.moderation || {};
+		const row1 = new ActionRowBuilder().addComponents(
+			new ButtonBuilder().setCustomId('setup:moderation:toggle').setLabel(mod.enabled ? 'Zet UIT' : 'Zet AAN').setStyle(mod.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+			new ButtonBuilder().setCustomId('setup:moderation:logchannel').setLabel('Modlog kanaal').setStyle(ButtonStyle.Primary),
+		);
+		await interaction.update({
+			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('⚠️ Moderation').setDescription(`
+**Status:** ${mod.enabled ? '✅ aan' : '❌ uit'}
+**Modlog kanaal:** ${mod.logChannelId ? `<#${mod.logChannelId}>` : '_niet ingesteld_'}
+**Bad words filter:** ${(mod.badWords || []).length} woorden
+**Warnings escalation:** Timeout @ ${mod.warningsEscalation?.timeoutAt || 3}, Kick @ ${mod.warningsEscalation?.kickAt || 5}, Ban @ ${mod.warningsEscalation?.banAt || 7}
+			`)],
+			components: [row1, backRow()],
+		}).catch(() => null);
+		return;
+	}
+
+	if (target === 'birthdays') {
+		const settings = getSettings(interaction.guildId);
+		const bd = settings.birthdays || {};
+		const row1 = new ActionRowBuilder().addComponents(
+			new ButtonBuilder().setCustomId('setup:birthdays:toggle').setLabel(bd.enabled ? 'Zet UIT' : 'Zet AAN').setStyle(bd.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+			new ButtonBuilder().setCustomId('setup:birthdays:channel').setLabel('Kanaal').setStyle(ButtonStyle.Primary),
+		);
+		await interaction.update({
+			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('🎂 Birthdays').setDescription(`
+**Status:** ${bd.enabled ? '✅ aan' : '❌ uit'}
+**Notification kanaal:** ${bd.notificationChannelId ? `<#${bd.notificationChannelId}>` : '_niet ingesteld_'}
+**Bonus coins:** ${bd.bonusCoins || 100}
+**Message:** ${bd.message || 'Happy Birthday {user}! 🎉'}
+			`)],
+			components: [row1, backRow()],
+		}).catch(() => null);
+		return;
+	}
+
+	if (target === 'reminders') {
+		const settings = getSettings(interaction.guildId);
+		const rem = settings.reminders || {};
+		const row1 = new ActionRowBuilder().addComponents(
+			new ButtonBuilder().setCustomId('setup:reminders:toggle').setLabel(rem.enabled ? 'Zet UIT' : 'Zet AAN').setStyle(rem.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+		);
+		await interaction.update({
+			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('⏰ Reminders').setDescription(`
+**Status:** ${rem.enabled ? '✅ aan' : '❌ uit'}
+**Functie:** Gebruikers kunnen reminders stellen met /remind
+Users can set reminders like: /remind 2h do laundry
+			`)],
+			components: [row1, backRow()],
+		}).catch(() => null);
+		return;
+	}
+
+	if (target === 'bumpreminders') {
+		const settings = getSettings(interaction.guildId);
+		const bump = settings.bumpReminders || {};
+		const row1 = new ActionRowBuilder().addComponents(
+			new ButtonBuilder().setCustomId('setup:bumpreminders:toggle').setLabel(bump.enabled ? 'Zet UIT' : 'Zet AAN').setStyle(bump.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+			new ButtonBuilder().setCustomId('setup:bumpreminders:role').setLabel('Bumper role').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:bumpreminders:channel').setLabel('Bump kanaal').setStyle(ButtonStyle.Primary),
+		);
+		await interaction.update({
+			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('🚀 Bump Reminders').setDescription(`
+**Status:** ${bump.enabled ? '✅ aan' : '❌ uit'}
+**Bumper role:** ${bump.bumperRoleId ? `<@&${bump.bumperRoleId}>` : '_niet ingesteld_'}
+**Bump kanaal:** ${bump.bumpChannelId ? `<#${bump.bumpChannelId}>` : '_niet ingesteld_'}
+**Functie:** Bot stuurt reminder wanneer het weer tijd is om te bumpen
+			`)],
+			components: [row1, backRow()],
+		}).catch(() => null);
 		return;
 	}
 }
@@ -1747,6 +1827,41 @@ async function dispatch(interaction) {
 			if (section === 'crownshop') { await handleCrownshopButton(interaction, action); return true; }
 			if (section === 'challenge') { await handleChallengeButton(interaction, action); return true; }
 			if (section === 'halloffame') { await handleHallOfFameButton(interaction, action); return true; }
+			if (section === 'moderation') {
+				if (action === 'toggle') {
+					const settings = getSettings(interaction.guildId);
+					setModeration(interaction.guildId, { ...settings.moderation, enabled: !settings.moderation?.enabled });
+					await handleMenu(interaction, 'moderation');
+				} else if (action === 'logchannel') {
+					// Channel select will follow
+					await handleMenu(interaction, 'moderation');
+				}
+				return true;
+			}
+			if (section === 'birthdays') {
+				if (action === 'toggle') {
+					const settings = getSettings(interaction.guildId);
+					setBirthdays(interaction.guildId, { ...settings.birthdays, enabled: !settings.birthdays?.enabled });
+					await handleMenu(interaction, 'birthdays');
+				}
+				return true;
+			}
+			if (section === 'reminders') {
+				if (action === 'toggle') {
+					const settings = getSettings(interaction.guildId);
+					setReminders(interaction.guildId, { enabled: !settings.reminders?.enabled });
+					await handleMenu(interaction, 'reminders');
+				}
+				return true;
+			}
+			if (section === 'bumpreminders') {
+				if (action === 'toggle') {
+					const settings = getSettings(interaction.guildId);
+					setBumpReminders(interaction.guildId, { ...settings.bumpReminders, enabled: !settings.bumpReminders?.enabled });
+					await handleMenu(interaction, 'bumpreminders');
+				}
+				return true;
+			}
 		}
 		if (interaction.isStringSelectMenu()) {
 			if (section === 'select') { await handleSelect(interaction); return true; }
@@ -1759,12 +1874,36 @@ async function dispatch(interaction) {
 			if (section === 'restrict' && action === 'channels') { await handleRestrictInteraction(interaction); return true; }
 			if (section === 'rolecat' && action === 'channel') { await handleRoleCatInteraction(interaction); return true; }
 			if (section === 'minigame' && action === 'channel') { await handleMinigameInteraction(interaction); return true; }
+			if (section === 'moderation' && action === 'logchannel') {
+				const channelId = interaction.values[0];
+				setModeration(interaction.guildId, { ...getSettings(interaction.guildId).moderation, logChannelId: channelId });
+				await handleMenu(interaction, 'moderation');
+				return true;
+			}
+			if (section === 'birthdays' && action === 'channel') {
+				const channelId = interaction.values[0];
+				setBirthdays(interaction.guildId, { ...getSettings(interaction.guildId).birthdays, notificationChannelId: channelId });
+				await handleMenu(interaction, 'birthdays');
+				return true;
+			}
+			if (section === 'bumpreminders' && action === 'channel') {
+				const channelId = interaction.values[0];
+				setBumpReminders(interaction.guildId, { ...getSettings(interaction.guildId).bumpReminders, bumpChannelId: channelId });
+				await handleMenu(interaction, 'bumpreminders');
+				return true;
+			}
 		}
 		if (interaction.isRoleSelectMenu()) {
 			if (section === 'setRole') { await handleRoleSelect(interaction); return true; }
 			if (section === 'restrict' && action === 'roles') { await handleRestrictInteraction(interaction); return true; }
 			if (section === 'rolecat' && action === 'roles') { await handleRoleCatInteraction(interaction); return true; }
 			if (section === 'approle' && action === 'role') { await handleApplicationRoleInteraction(interaction); return true; }
+			if (section === 'bumpreminders' && action === 'role') {
+				const roleId = interaction.values[0];
+				setBumpReminders(interaction.guildId, { ...getSettings(interaction.guildId).bumpReminders, bumperRoleId: roleId });
+				await handleMenu(interaction, 'bumpreminders');
+				return true;
+			}
 		}
 		if (interaction.isModalSubmit()) {
 			if (section === 'modal' && (action === 'approle-add' || action === 'approle-rename')) {

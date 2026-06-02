@@ -102,6 +102,12 @@ function buildMainButtons() {
 		new ActionRowBuilder().addComponents(
 			new ButtonBuilder().setCustomId('setup:menu:challenge').setLabel('Daily Challenge').setStyle(ButtonStyle.Primary),
 			new ButtonBuilder().setCustomId('setup:menu:halloffame').setLabel('Hall of Fame').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:menu:moderation').setLabel('⚠️ Moderation').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:menu:birthdays').setLabel('🎂 Birthdays').setStyle(ButtonStyle.Primary),
+		),
+		new ActionRowBuilder().addComponents(
+			new ButtonBuilder().setCustomId('setup:menu:reminders').setLabel('⏰ Reminders').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:menu:bumpreminders').setLabel('🚀 Bump').setStyle(ButtonStyle.Primary),
 			new ButtonBuilder().setCustomId('setup:menu:status').setLabel('Status').setStyle(ButtonStyle.Secondary),
 			new ButtonBuilder().setCustomId('setup:menu:close').setLabel('Sluiten').setStyle(ButtonStyle.Secondary),
 		),

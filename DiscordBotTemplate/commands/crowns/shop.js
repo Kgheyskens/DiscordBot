@@ -1,9 +1,17 @@
 const path = require('path');
-const { EmbedBuilder, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
+const {
+	ActionRowBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+	EmbedBuilder,
+	PermissionFlagsBits,
+	SlashCommandBuilder,
+} = require('discord.js');
 const { listItems, addItem, removeItem, findItem, purchaseItem } = require('../../lib/shopService');
 const { addBalance } = require('../../lib/coinService');
 const { processLevelGain } = require('../../lib/levelingService');
 const { isEconomyEnabled } = require('../../lib/economyService');
+const inventoryService = require('../../lib/inventoryService');
 
 const coinsFile = path.join(__dirname, '..', '..', 'data', 'coins.json');
 const crownsConfigFile = path.join(__dirname, '..', '..', 'data', 'crownsConfig.json');
@@ -51,6 +59,9 @@ module.exports = {
 			const lines = items.map(item => {
 				const tag = item.type === 'role' ? `<@&${item.payload}>`
 					: item.type === 'xp' ? `${item.payload} XP`
+					: item.type === 'xpboost' ? '⚡ consumable'
+					: item.type === 'luckycharm' ? '🍀 consumable'
+					: item.type === 'customrole' ? '🎨 eigen rol via ticket'
 					: 'custom';
 				return `**${item.name}** — ${item.price} coins\nID: \`${item.id}\` • ${tag}${item.description ? `\n${item.description}` : ''}`;
 			});
@@ -125,6 +136,41 @@ module.exports = {
 
 				await interaction.reply({
 					content: `Je hebt **${xpAmount} XP** gekocht voor ${item.price} coins.${levelResult.leveledUp ? ` Je bent nu level ${levelResult.level}.` : ''} Nieuwe balans: ${result.newBalance}.`,
+					flags: 64,
+				});
+				return;
+			}
+
+			if (item.type === 'xpboost' || item.type === 'luckycharm') {
+				const effectKey = item.type === 'xpboost' ? 'xpBooster' : 'luckyCharm';
+				const result = purchaseItem({ guildId: interaction.guildId, userId: interaction.user.id, itemId });
+				if (result.error) {
+					await interaction.reply({ content: result.error, flags: 64 });
+					return;
+				}
+				inventoryService.addItem(interaction.guildId, interaction.user.id, effectKey, 1);
+				await interaction.reply({
+					content: `✅ Je hebt **${item.name}** gekocht voor ${item.price} coins. Gebruik \`/inventory use\` om te activeren. Nieuwe balans: ${result.newBalance}.`,
+					flags: 64,
+				});
+				return;
+			}
+
+			if (item.type === 'customrole') {
+				const result = purchaseItem({ guildId: interaction.guildId, userId: interaction.user.id, itemId });
+				if (result.error) {
+					await interaction.reply({ content: result.error, flags: 64 });
+					return;
+				}
+				const requestRow = new ActionRowBuilder().addComponents(
+					new ButtonBuilder()
+						.setCustomId(`customrole:request:${interaction.user.id}:${item.price}`)
+						.setLabel('Vul rol-aanvraag in')
+						.setStyle(ButtonStyle.Primary),
+				);
+				await interaction.reply({
+					content: `✅ Je hebt een eigen rol-aanvraag gekocht voor ${item.price} coins. Klik hieronder om naam en kleur in te vullen — een mod beoordeelt de aanvraag.`,
+					components: [requestRow],
 					flags: 64,
 				});
 				return;

@@ -62,6 +62,33 @@ const DEFAULT_SETTINGS = {
 		postDay: 1,
 		postHour: 10,
 	},
+	moderation: {
+		enabled: false,
+		logChannelId: null,
+		badWords: [],
+		antiSpamThreshold: 5,
+		antiSpamWindow: 5,
+		antiLinkChannels: [],
+		warningsEscalation: {
+			timeoutAt: 3,
+			kickAt: 5,
+			banAt: 7,
+		},
+	},
+	birthdays: {
+		enabled: false,
+		notificationChannelId: null,
+		message: 'Happy Birthday {user}! 🎉',
+		bonusCoins: 100,
+	},
+	reminders: {
+		enabled: false,
+	},
+	bumpReminders: {
+		enabled: false,
+		bumpChannelId: null,
+		bumperRoleId: null,
+	},
 	applicationRoles: [],
 };
 
@@ -196,6 +223,22 @@ function resetSection(guildId, section) {
 	return current;
 }
 
+function setModeration(guildId, partial) {
+	return saveSettings(guildId, { moderation: partial || {} });
+}
+
+function setBirthdays(guildId, partial) {
+	return saveSettings(guildId, { birthdays: partial || {} });
+}
+
+function setReminders(guildId, partial) {
+	return saveSettings(guildId, { reminders: partial || {} });
+}
+
+function setBumpReminders(guildId, partial) {
+	return saveSettings(guildId, { bumpReminders: partial || {} });
+}
+
 module.exports = {
 	guildSettingsFile,
 	DEFAULT_SETTINGS,
@@ -210,6 +253,10 @@ module.exports = {
 	setCrownshop,
 	setChallenge,
 	setHallOfFame,
+	setModeration,
+	setBirthdays,
+	setReminders,
+	setBumpReminders,
 	getApplicationRoles,
 	setApplicationRoles,
 	addApplicationRole,

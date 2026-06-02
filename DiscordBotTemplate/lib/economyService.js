@@ -7,6 +7,7 @@ const {
 } = require('./coinService');
 const { getCrownConfig } = require('./crownService');
 const { getSettings } = require('./guildSettings');
+const { getRobBonus } = require('./effectService');
 
 const coinsFile = path.join(__dirname, '..', 'data', 'coins.json');
 const economyTimersFile = path.join(__dirname, '..', 'data', 'economyTimers.json');
@@ -181,7 +182,8 @@ function attemptRob({ coinsFile: file, timersFile, guildId, robberId, victimId }
 		return { error: 'Dit slachtoffer is recent al beroofd. Probeer iemand anders.' };
 	}
 
-	const successChance = Math.max(0, Math.min(100, econ.robSuccessChance));
+	const bonus = getRobBonus(guildId, robberId);
+	const successChance = Math.max(0, Math.min(100, econ.robSuccessChance + bonus));
 	const success = Math.random() * 100 < successChance;
 	setUserTimer(timersFile, guildId, robberId, 'robAt', now);
 

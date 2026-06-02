@@ -2,6 +2,7 @@ const path = require('path');
 const { ChannelType, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const { readJson, writeJson } = require('./jsonStore');
 const { getRequiredXp } = require('./leveling');
+const { getXpMultiplier } = require('./effectService');
 
 function readLevelStore(levelsFile) {
 	return readJson(levelsFile, {});
@@ -123,7 +124,9 @@ async function processLevelGain({
 	const allLevels = readLevelStore(levelsFile);
 	const guildLevels = allLevels[guild.id] || {};
 	const currentData = guildLevels[user.id] || { xp: 0, level: 0, lastMessageAt: 0 };
-	const result = applyXpGain(currentData, amount);
+	const multiplier = getXpMultiplier(guild.id, user.id);
+	const boostedAmount = Math.floor(amount * multiplier);
+	const result = applyXpGain(currentData, boostedAmount);
 	const nextData = {
 		xp: result.xp,
 		level: result.level,

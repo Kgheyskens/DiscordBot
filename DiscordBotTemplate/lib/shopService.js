@@ -5,7 +5,7 @@ const { getBalance, subtractBalance } = require('./coinService');
 const shopFile = path.join(__dirname, '..', 'data', 'shopItems.json');
 const coinsFile = path.join(__dirname, '..', 'data', 'coins.json');
 
-const VALID_TYPES = new Set(['role', 'xp', 'custom']);
+const VALID_TYPES = new Set(['role', 'xp', 'custom', 'xpboost', 'luckycharm', 'customrole']);
 
 function readAll() {
 	return readJson(shopFile, {});
@@ -19,9 +19,32 @@ function generateId() {
 	return `i${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
+const DEFAULT_ITEMS = [
+	{ type: 'xpboost', name: '⚡ XP Booster (1u)', price: 500, payload: 'xpBooster', description: '2x XP voor 1 uur. Activeer met /inventory use.' },
+	{ type: 'luckycharm', name: '🍀 Lucky Charm (1u)', price: 300, payload: 'luckyCharm', description: '+20% rob-succeskans voor 1 uur. Activeer met /inventory use.' },
+	{ type: 'customrole', name: '🎨 Eigen rol', price: 5000, payload: 'customRole', description: 'Vraag een persoonlijke rol aan (naam + kleur). Wordt door mods goedgekeurd.' },
+];
+
+function generateDefaults() {
+	return DEFAULT_ITEMS.map(d => ({
+		id: generateId(),
+		type: d.type,
+		name: d.name,
+		price: d.price,
+		currency: 'coins',
+		payload: d.payload,
+		description: d.description,
+		isDefault: true,
+	}));
+}
+
 function listItems(guildId) {
 	const all = readAll();
-	return all[guildId] || [];
+	if (!all[guildId]) {
+		all[guildId] = generateDefaults();
+		writeAll(all);
+	}
+	return all[guildId];
 }
 
 function addItem(guildId, item) {

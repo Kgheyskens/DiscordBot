@@ -52,6 +52,14 @@ const menuCommand = require('./commands/menu/menu');
 const redembedCommand = require('./commands/redembed/redembed');
 const afkService = require('./lib/afkService');
 const { isEconomyEnabled } = require('./lib/economyService');
+const coinflipCommand = require('./commands/coinflip/coinflip');
+const coinService = require('./lib/coinService');
+const warningsService = require('./lib/warningsService');
+const reminderService = require('./lib/reminderService');
+const birthdayService = require('./lib/birthdayService');
+const confessionService = require('./lib/confessionService');
+const bumpService = require('./lib/bumpService');
+const customRoleRequestsFile = path.join(__dirname, 'data', 'customRoleRequests.json');
 const {
 	drawCard,
 	handValue,
@@ -547,6 +555,83 @@ async function checkSchedules() {
 						hofState[guild.id] = { lastPostedDate: todayDate };
 						writeJson(halloffameStateFile, hofState);
 					}
+				}
+			}
+
+			// NEW: Check reminders
+			if (settings.reminders?.enabled) {
+				const expiredReminders = reminderService.getExpiredReminders(guild.id);
+				for (const reminder of expiredReminders) {
+					try {
+						const channel = await guild.channels.fetch(reminder.channelId).catch(() => null);
+						const user = await client.users.fetch(reminder.userId).catch(() => null);
+
+						if (reminder.type === 'user' && user) {
+							try {
+								await user.send(`⏰ **Reminder**: ${reminder.content}`);
+							} catch (dmErr) {
+								if (channel) {
+									await channel.send(`<@${reminder.userId}> ⏰ **Reminder**: ${reminder.content}`);
+								}
+							}
+						} else if (reminder.type === 'bump' && channel) {
+							const roleId = bumpService.getBumpReminderRole(guild.id);
+							const roleTag = roleId ? `<@&${roleId}>` : '@everyone';
+							await channel.send(`${roleTag} ⏰ Time to bump! \`/bump\``);
+						}
+					} catch (reminderErr) {
+						console.error(`Failed to send reminder ${reminder.id}:`, reminderErr);
+					}
+					reminderService.deleteReminder(guild.id, reminder.id);
+				}
+			}
+
+			// NEW: Check birthdays (daily at UTC midnight)
+			if (settings.birthdays?.enabled && settings.channels?.modlog) {
+				const birthdayChannelId = settings.birthdays.notificationChannelId || settings.channels.modlog;
+				const channel = await guild.channels.fetch(birthdayChannelId).catch(() => null);
+				if (channel) {
+					const birthdayUsers = birthdayService.getTodaysBirthdays(guild.id);
+					for (const userId of birthdayUsers) {
+						try {
+							const member = await guild.members.fetch(userId).catch(() => null);
+							if (member) {
+								const message = settings.birthdays.message || 'Happy Birthday {user}! 🎉';
+								const finalMessage = message.replace('{user}', member.toString());
+								await channel.send(finalMessage);
+
+								// Award birthday bonus coins
+								const bonus = settings.birthdays.bonusCoins || 100;
+								addCoinBalance(coinsFile, guild.id, userId, bonus);
+							}
+						} catch (birthdayErr) {
+							console.error(`Failed to process birthday for ${userId}:`, birthdayErr);
+						}
+					}
+				}
+			}
+
+			// NEW: Check bump reminders
+			if (settings.bumpReminders?.enabled && settings.channels?.modlog) {
+				const bumpChannelId = settings.bumpReminders.bumpChannelId || settings.channels.modlog;
+				const channel = await guild.channels.fetch(bumpChannelId).catch(() => null);
+				if (channel && bumpService.shouldPostBumpReminder(guild.id)) {
+					const roleId = bumpService.getBumpReminderRole(guild.id);
+					const roleTag = roleId ? `<@&${roleId}>` : '@everyone';
+					const lastBump = bumpService.getLastBumpTime(guild.id);
+					const nextReminder = bumpService.getNextBumpReminderTime(guild.id);
+
+					let embed = new EmbedBuilder()
+						.setTitle('🚀 Bump Reminder')
+						.setDescription(`${roleTag} - Time to bump the server!`)
+						.setColor(0x00ff00);
+
+					if (lastBump) {
+						const bumpDate = new Date(lastBump);
+						embed.addFields({ name: 'Last Bump', value: bumpDate.toLocaleString(), inline: false });
+					}
+
+					await channel.send({ content: roleTag, embeds: [embed] });
 				}
 			}
 		}
@@ -1086,6 +1171,216 @@ client.on(Events.InteractionCreate, async interaction => {
 		}
 
 		if (interaction.isButton()) {
+			if (interaction.customId.startsWith('coinflip:')) {
+				const [, action, duelId] = interaction.customId.split(':');
+				const duel = coinflipCommand.activeDuels.get(duelId);
+				if (!duel || !duel.escrowed) {
+					await interaction.reply({ content: 'Dit duel is verlopen.', flags: 64 });
+					return;
+				}
+				if (interaction.user.id !== duel.opponentId) {
+					await interaction.reply({ content: 'Alleen de uitgedaagde persoon kan dit beslissen.', flags: 64 });
+					return;
+				}
+
+				if (action === 'decline') {
+					coinflipCommand.activeDuels.delete(duelId);
+					duel.escrowed = false;
+					coinService.addBalance(coinsFile, duel.guildId, duel.challengerId, duel.bet);
+					coinService.addBalance(coinsFile, duel.guildId, duel.opponentId, duel.bet);
+					await interaction.update({
+						content: `❌ <@${duel.opponentId}> heeft de uitdaging geweigerd. Inzetten zijn teruggegeven.`,
+						embeds: [],
+						components: [],
+					}).catch(() => null);
+					return;
+				}
+
+				if (action === 'accept') {
+					coinflipCommand.activeDuels.delete(duelId);
+					duel.escrowed = false;
+					const winnerId = Math.random() < 0.5 ? duel.challengerId : duel.opponentId;
+					const pot = duel.bet * 2;
+					coinService.addBalance(coinsFile, duel.guildId, winnerId, pot);
+					await interaction.update({
+						content: `🪙 De munt wordt geworpen...`,
+						embeds: [],
+						components: [],
+					}).catch(() => null);
+					await new Promise(r => setTimeout(r, 2000));
+					await interaction.editReply({
+						content: `🎉 <@${winnerId}> wint de coinflip en krijgt **${pot}** coins! (<@${duel.challengerId}> vs <@${duel.opponentId}>)`,
+					}).catch(() => null);
+					return;
+				}
+			}
+
+			if (interaction.customId.startsWith('lb:')) {
+				const [, action, type] = interaction.customId.split(':');
+				const leaderboardCommand = require('./commands/social/leaderboard');
+
+				const { readJson } = require('./lib/jsonStore');
+				const coinsFile = path.join(__dirname, 'data', 'coins.json');
+				const levelsFile = path.join(__dirname, 'data', 'levels.json');
+				const crownsFile = path.join(__dirname, 'data', 'crowns.json');
+
+				function getLeaderboardData(guildId, type) {
+					let data = {};
+					switch (type) {
+						case 'coins':
+							data = readJson(coinsFile, {})[guildId] || {};
+							break;
+						case 'levels':
+							const levelsData = readJson(levelsFile, {})[guildId] || {};
+							for (const [userId, userData] of Object.entries(levelsData)) {
+								data[userId] = userData.level || 0;
+							}
+							break;
+						case 'crowns':
+							data = readJson(crownsFile, {})[guildId] || {};
+							break;
+					}
+					return Object.entries(data)
+						.map(([userId, value]) => ({ userId, value: typeof value === 'object' ? value.level || 0 : value }))
+						.sort((a, b) => b.value - a.value);
+				}
+
+				const ITEMS_PER_PAGE = 10;
+				const entries = getLeaderboardData(interaction.guildId, type);
+				const totalPages = Math.ceil(entries.length / ITEMS_PER_PAGE);
+				let page = 0;
+
+				if (action === 'first') {
+					page = 0;
+				} else if (action === 'last') {
+					page = totalPages - 1;
+				} else if (action === 'next') {
+					const current = parseInt(interaction.message?.embeds?.[0]?.footer?.text?.match(/\d+/)?.[0] || 1) - 1;
+					page = Math.min(current + 1, totalPages - 1);
+				} else if (action === 'prev') {
+					const current = parseInt(interaction.message?.embeds?.[0]?.footer?.text?.match(/\d+/)?.[0] || 1) - 1;
+					page = Math.max(current - 1, 0);
+				}
+
+				const titleMap = { coins: '💰 Coin Leaderboard', levels: '🎮 Level Leaderboard', crowns: '👑 Crown Leaderboard' };
+				const start = page * ITEMS_PER_PAGE;
+				const pageEntries = entries.slice(start, start + ITEMS_PER_PAGE);
+
+				const medals = ['🥇', '🥈', '🥉'];
+				const lines = pageEntries.map((entry, idx) => {
+					const medal = medals[start + idx] || `#${start + idx + 1}`;
+					return `${medal} <@${entry.userId}> — **${entry.value}** ${type === 'coins' ? 'coins' : type === 'crowns' ? 'crowns' : 'level'}`;
+				});
+
+				const embed = new EmbedBuilder()
+					.setColor(0xb40f0f)
+					.setTitle(titleMap[type] || 'Leaderboard')
+					.setDescription(lines.join('\n') || 'No data yet.')
+					.setFooter({ text: `Page ${page + 1}/${totalPages}` });
+
+				const buttons = new ActionRowBuilder().addComponents(
+					new ButtonBuilder().setCustomId(`lb:first:${type}`).setLabel('First').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+					new ButtonBuilder().setCustomId(`lb:prev:${type}`).setLabel('←').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+					new ButtonBuilder().setCustomId(`lb:next:${type}`).setLabel('→').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages - 1),
+					new ButtonBuilder().setCustomId(`lb:last:${type}`).setLabel('Last').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages - 1),
+				);
+
+				await interaction.update({ embeds: [embed], components: [buttons] }).catch(() => null);
+				return;
+			}
+
+			if (interaction.customId.startsWith('customrole:')) {
+				const parts = interaction.customId.split(':');
+				const action = parts[1];
+
+				if (action === 'request') {
+					const buyerId = parts[2];
+					const pricePaid = Number(parts[3]) || 0;
+					if (interaction.user.id !== buyerId) {
+						await interaction.reply({ content: 'Alleen de koper kan deze aanvraag invullen.', flags: 64 });
+						return;
+					}
+					const modal = new ModalBuilder()
+						.setCustomId(`customrole:submit:${buyerId}:${pricePaid}`)
+						.setTitle('Eigen rol aanvragen');
+					modal.addComponents(
+						new ActionRowBuilder().addComponents(
+							new TextInputBuilder().setCustomId('rolename').setLabel('Rol naam').setStyle(TextInputStyle.Short).setMaxLength(80).setRequired(true),
+						),
+						new ActionRowBuilder().addComponents(
+							new TextInputBuilder().setCustomId('rolecolor').setLabel('Hex kleur (bv. #b40f0f)').setStyle(TextInputStyle.Short).setMaxLength(7).setRequired(true).setPlaceholder('#b40f0f'),
+						),
+						new ActionRowBuilder().addComponents(
+							new TextInputBuilder().setCustomId('reason').setLabel('Waarom wil je deze rol?').setStyle(TextInputStyle.Paragraph).setRequired(false),
+						),
+					);
+					await interaction.showModal(modal);
+					return;
+				}
+
+				if (action === 'approve' || action === 'deny') {
+					const requestId = parts[2];
+					const allReq = readJson(customRoleRequestsFile, {});
+					const guildReq = allReq[interaction.guildId] || {};
+					const req = guildReq[requestId];
+					if (!req || req.handled) {
+						await interaction.reply({ content: 'Deze aanvraag is al afgehandeld of bestaat niet meer.', flags: 64 });
+						return;
+					}
+					const settings = getSettings(interaction.guildId);
+					const supportRoleId = settings.roles?.ticketSupport;
+					const isMod = (supportRoleId && interaction.member?.roles?.cache?.has(supportRoleId))
+						|| interaction.memberPermissions?.has(PermissionFlagsBits.ManageRoles);
+					if (!isMod) {
+						await interaction.reply({ content: '❌ Alleen mods kunnen aanvragen afhandelen.', flags: 64 });
+						return;
+					}
+
+					if (action === 'deny') {
+						req.handled = true;
+						req.deniedBy = interaction.user.id;
+						guildReq[requestId] = req;
+						allReq[interaction.guildId] = guildReq;
+						writeJson(customRoleRequestsFile, allReq);
+						// Refund
+						coinService.addBalance(coinsFile, interaction.guildId, req.userId, req.pricePaid);
+						await interaction.update({
+							content: `❌ Aanvraag afgewezen door <@${interaction.user.id}>. <@${req.userId}> heeft **${req.pricePaid}** coins teruggekregen.`,
+							components: [],
+						}).catch(() => null);
+						return;
+					}
+
+					// Approve: maak rol aan
+					try {
+						const guild = interaction.guild;
+						const role = await guild.roles.create({
+							name: req.roleName,
+							color: req.roleColor,
+							reason: `Custom role purchase by ${req.userId}, approved by ${interaction.user.id}`,
+						});
+						const member = await guild.members.fetch(req.userId).catch(() => null);
+						if (member) {
+							await member.roles.add(role.id).catch(() => null);
+						}
+						req.handled = true;
+						req.approvedBy = interaction.user.id;
+						req.roleId = role.id;
+						guildReq[requestId] = req;
+						allReq[interaction.guildId] = guildReq;
+						writeJson(customRoleRequestsFile, allReq);
+						await interaction.update({
+							content: `✅ Aanvraag goedgekeurd door <@${interaction.user.id}>. Rol <@&${role.id}> is aangemaakt en toegekend aan <@${req.userId}>.`,
+							components: [],
+						}).catch(() => null);
+					} catch (err) {
+						console.error('Failed to create custom role:', err);
+						await interaction.reply({ content: `❌ Kon rol niet aanmaken: ${err.message}`, flags: 64 });
+					}
+					return;
+				}
+			}
+
 			if (interaction.customId.startsWith('blackjack:')) {
 				const [, gameId, action] = interaction.customId.split(':');
 				const games = loadBlackjackGames();
@@ -1414,6 +1709,122 @@ client.on(Events.InteractionCreate, async interaction => {
 
 		if (interaction.isModalSubmit() && interaction.customId.startsWith('redembed:submit:')) {
 			await redembedCommand.handleModal(interaction);
+			return;
+		}
+
+		if (interaction.isModalSubmit() && interaction.customId.startsWith('customrole:submit:')) {
+			const parts = interaction.customId.split(':');
+			const buyerId = parts[2];
+			const pricePaid = Number(parts[3]) || 0;
+			if (interaction.user.id !== buyerId) {
+				await interaction.reply({ content: 'Alleen de koper kan deze aanvraag indienen.', flags: 64 });
+				return;
+			}
+			const roleName = interaction.fields.getTextInputValue('rolename').trim().slice(0, 80);
+			let roleColor = interaction.fields.getTextInputValue('rolecolor').trim();
+			if (!/^#[0-9A-Fa-f]{6}$/.test(roleColor)) {
+				await interaction.reply({ content: '❌ Kleur moet een hex zijn zoals `#b40f0f`. Aanvraag NIET ingediend, je coins zijn nog niet uitgegeven aan een mod-aanvraag. Probeer opnieuw via /shop buy.', flags: 64 });
+				// Refund omdat aanvraag faalt
+				coinService.addBalance(coinsFile, interaction.guildId, buyerId, pricePaid);
+				return;
+			}
+			const reason = (interaction.fields.getTextInputValue('reason') || '').slice(0, 500);
+
+			const requestId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+			const allReq = readJson(customRoleRequestsFile, {});
+			const guildReq = allReq[interaction.guildId] || {};
+			guildReq[requestId] = {
+				userId: buyerId,
+				roleName,
+				roleColor,
+				reason,
+				pricePaid,
+				createdAt: Date.now(),
+				handled: false,
+			};
+			allReq[interaction.guildId] = guildReq;
+			writeJson(customRoleRequestsFile, allReq);
+
+			// Post bericht in modlog of in eerste beschikbaar kanaal voor mods
+			const settings = getSettings(interaction.guildId);
+			const modChannelId = settings.channels?.modlog || settings.channels?.ticketPanel;
+			let target = null;
+			if (modChannelId) {
+				target = interaction.guild.channels.cache.get(modChannelId) || await interaction.guild.channels.fetch(modChannelId).catch(() => null);
+			}
+
+			const embed = new EmbedBuilder()
+				.setColor(roleColor)
+				.setTitle('🎨 Custom rol aanvraag')
+				.setDescription(`Aanvrager: <@${buyerId}>\nNaam: **${roleName}**\nKleur: \`${roleColor}\`\nReden: ${reason || '_geen_'}`)
+				.setFooter({ text: `Request ID: ${requestId} • Mods kunnen beslissen` });
+
+			const row = new ActionRowBuilder().addComponents(
+				new ButtonBuilder().setCustomId(`customrole:approve:${requestId}`).setLabel('Goedkeuren').setStyle(ButtonStyle.Success),
+				new ButtonBuilder().setCustomId(`customrole:deny:${requestId}`).setLabel('Afwijzen').setStyle(ButtonStyle.Danger),
+			);
+
+			if (target?.isTextBased?.()) {
+				await target.send({ embeds: [embed], components: [row] }).catch(() => null);
+				await interaction.reply({ content: '✅ Je aanvraag is verstuurd naar de mods. Je krijgt bericht zodra ze hebben beslist.', flags: 64 });
+			} else {
+				await interaction.reply({
+					content: '✅ Aanvraag opgeslagen, maar er is geen mod-kanaal ingesteld. Vraag een admin om een **modlog** of **ticketPanel** kanaal in te stellen via /setup.',
+					embeds: [embed],
+					components: [row],
+					flags: 64,
+				});
+			}
+			return;
+		}
+
+		if (interaction.isModalSubmit() && interaction.customId === 'confess_modal') {
+			const content = interaction.fields.getTextInputValue('confession_text').trim();
+
+			if (!content) {
+				await interaction.reply({ content: '❌ Confession cannot be empty.', flags: 64 });
+				return;
+			}
+
+			const settings = getSettings(interaction.guildId);
+			const confessionChannelId = settings.channels?.modlog;
+
+			if (!confessionChannelId) {
+				await interaction.reply({
+					content: '❌ Confession channel not set. Ask admin to configure via `/setup`.',
+					flags: 64,
+				});
+				return;
+			}
+
+			try {
+				const channel = await interaction.guild.channels.fetch(confessionChannelId).catch(() => null);
+				if (!channel || !channel.isTextBased?.()) {
+					await interaction.reply({ content: '❌ Confession channel not found or invalid.', flags: 64 });
+					return;
+				}
+
+				const confessionId = confessionService.submitConfession(interaction.guildId, content);
+				const confessionNumber = confessionId.split('_')[1] || Math.floor(Math.random() * 10000);
+
+				const embed = new EmbedBuilder()
+					.setColor(0x9b59b6)
+					.setTitle(`📝 Anonymous Confession #${confessionNumber}`)
+					.setDescription(content)
+					.setFooter({ text: `React with reactions to engage` });
+
+				await channel.send({ embeds: [embed] });
+				await interaction.reply({
+					content: '✅ Your confession has been posted anonymously!',
+					flags: 64,
+				});
+			} catch (err) {
+				console.error('Confession submission failed:', err);
+				await interaction.reply({
+					content: `❌ Failed to post confession: ${err.message}`,
+					flags: 64,
+				});
+			}
 			return;
 		}
 
