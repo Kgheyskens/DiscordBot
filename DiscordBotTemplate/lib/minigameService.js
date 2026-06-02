@@ -271,7 +271,7 @@ function renderMinesweeperGrid(state) {
 				else if (cell.adj === 0) ch = ' ';
 				else ch = String(cell.adj);
 			} else if (cell.flagged) {
-				ch = '🚩';
+				ch = '★';
 			} else if (cell.revealed) {
 				ch = cell.adj === 0 ? ' ' : String(cell.adj);
 			}
