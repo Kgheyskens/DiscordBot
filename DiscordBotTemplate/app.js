@@ -1941,7 +1941,7 @@ client.on(Events.InteractionCreate, async interaction => {
 		}
 
 		const selectedRoleIds = new Set(interaction.values);
-		const menuRoleIds = menuConfig.roles.map(role => role.roleId);
+		const menuRoleIds = (menuConfig.roles?.map(role => role.roleId) || menuConfig.roleIds || []);
 
 		const errors = [];
 		for (const roleId of menuRoleIds) {
