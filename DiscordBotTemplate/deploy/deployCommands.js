@@ -1,9 +1,14 @@
+require('dotenv').config();
 const { REST, Routes } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
+console.log('✅ dotenv loaded');
+
 const BOT_TOKEN = process.env.CLIENT_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
+
+console.log('✅ TOKEN:', !!BOT_TOKEN, 'ID:', CLIENT_ID);
 
 function loadCommandPayload() {
     const commands = [];
@@ -42,6 +47,8 @@ async function deployToGuild(rest, guildId, commands) {
 
 const deploy = async () => {
     const commands = loadCommandPayload();
+    console.log(`📋 Loaded ${commands.length} commands`);
+
     const rest = new REST().setToken(BOT_TOKEN);
 
     const devGuildIds = (process.env.DEV_GUILD_IDS || process.env.GUILD_ID || '')
@@ -49,28 +56,16 @@ const deploy = async () => {
         .map(id => id.trim())
         .filter(Boolean);
 
-    (async () => {
-        try {
-            // Wis globale commands eenmalig om dubbele weergave te voorkomen.
-            // We deployen ALLEEN guild-scoped (instant) — dit is bewust gekozen.
-            const wipeGlobal = process.env.WIPE_GLOBAL_COMMANDS !== 'false';
-            if (wipeGlobal) {
-                try {
-                    await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
-                    console.log('Global commands gewist (dubbele entries verdwijnen binnen ~1 uur).');
-                } catch (err) {
-                    console.error('Globale wipe mislukt:', err.message || err);
-                }
-            }
-
-            console.log(`Deploying ${commands.length} commands naar ${devGuildIds.length} guild(s)...`);
-            for (const guildId of devGuildIds) {
-                await deployToGuild(rest, guildId, commands);
-            }
-        } catch (error) {
-            console.error('Deploy failed:', error);
+    try {
+        console.log(`🚀 Deploying ${commands.length} commands naar ${devGuildIds.length} guild(s)...`);
+        for (const guildId of devGuildIds) {
+            await deployToGuild(rest, guildId, commands);
         }
-    })();
+        console.log('✅ Deploy complete!');
+    } catch (error) {
+        console.error('Deploy failed:', error);
+    }
+    process.exit(0);
 }
 
 deploy.deployToGuild = async function (guildId) {
@@ -78,5 +73,10 @@ deploy.deployToGuild = async function (guildId) {
     const rest = new REST().setToken(BOT_TOKEN);
     return deployToGuild(rest, guildId, commands);
 };
+
+// Run deploy if called directly
+if (require.main === module) {
+    deploy();
+}
 
 module.exports = deploy;
