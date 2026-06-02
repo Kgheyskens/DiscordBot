@@ -115,9 +115,14 @@ module.exports = {
 		}
 
 		if (game === 'minesweeper') {
-			const width = 8;
-			const height = 8;
-			const bombs = 12;
+			// Random board size: 5x5, 6x6, 7x7, 8x8
+			const sizes = [
+				{ width: 5, height: 5, bombs: 5 },
+				{ width: 6, height: 6, bombs: 8 },
+				{ width: 7, height: 7, bombs: 12 },
+				{ width: 8, height: 8, bombs: 15 },
+			];
+			const { width, height, bombs } = sizes[Math.floor(Math.random() * sizes.length)];
 			const cells = generateMinesweeperBoard(width, height, bombs);
 			const gameId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 			const state = {

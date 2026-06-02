@@ -315,11 +315,15 @@ async function handleMinesweeperMessage(message, state) {
 		state.won = false;
 		minigameService.setActiveGame(message.guild.id, message.channel.id, null);
 		await editOrSendMinigame(message, state, minigameService.buildMinesweeperEmbed, '🛑 Minesweeper gestopt.');
+		await message.delete().catch(() => null);
 		return true;
 	}
 
 	const parsed = minigameService.parseMinesweeperInput(state, raw);
-	if (!parsed) return false;
+	if (!parsed) {
+		await message.delete().catch(() => null);
+		return false;
+	}
 
 	const cell = state.cells[parsed.idx];
 	if (cell.revealed) {
@@ -331,6 +335,7 @@ async function handleMinesweeperMessage(message, state) {
 		cell.flagged = !cell.flagged;
 		minigameService.setActiveGame(message.guild.id, message.channel.id, state);
 		await editOrSendMinigame(message, state, minigameService.buildMinesweeperEmbed);
+		setTimeout(() => message.delete().catch(() => null), 1000);
 		return true;
 	}
 
@@ -345,6 +350,7 @@ async function handleMinesweeperMessage(message, state) {
 		state.won = false;
 		minigameService.setActiveGame(message.guild.id, message.channel.id, null);
 		await editOrSendMinigame(message, state, minigameService.buildMinesweeperEmbed, '💥 Boem! Je raakte een bom.');
+		setTimeout(() => message.delete().catch(() => null), 1000);
 		return true;
 	}
 
@@ -356,11 +362,13 @@ async function handleMinesweeperMessage(message, state) {
 		minigameService.setActiveGame(message.guild.id, message.channel.id, null);
 		await editOrSendMinigame(message, state, minigameService.buildMinesweeperEmbed,
 			reward > 0 ? `🎉 <@${message.author.id}> wint en krijgt **${reward}** kroontjes!` : `🎉 <@${message.author.id}> wint!`);
+		setTimeout(() => message.delete().catch(() => null), 1000);
 		return true;
 	}
 
 	minigameService.setActiveGame(message.guild.id, message.channel.id, state);
 	await editOrSendMinigame(message, state, minigameService.buildMinesweeperEmbed);
+	setTimeout(() => message.delete().catch(() => null), 1000);
 	return true;
 }
 

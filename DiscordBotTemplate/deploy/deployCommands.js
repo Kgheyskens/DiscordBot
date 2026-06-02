@@ -65,7 +65,11 @@ const deploy = async () => {
     } catch (error) {
         console.error('Deploy failed:', error);
     }
-    process.exit(0);
+
+    // Only exit if run directly, not if required by app.js
+    if (require.main === module) {
+        process.exit(0);
+    }
 }
 
 deploy.deployToGuild = async function (guildId) {
