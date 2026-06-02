@@ -333,6 +333,16 @@ async function awardWin(guildId, userId, game) {
 	const settings = getSettings(guildId);
 	const reward = Math.max(0, Number(settings.minigames?.[game]?.rewardCrowns) || 0);
 	if (reward > 0) addBalance(crownsFile, guildId, userId, reward);
+
+	// Track win in minigames.json
+	const minigamesData = readJson(minigamesFile, {});
+	if (!minigamesData[guildId]) minigamesData[guildId] = {};
+	if (!minigamesData[guildId][game]) minigamesData[guildId][game] = { winners: {} };
+	if (!minigamesData[guildId][game].winners) minigamesData[guildId][game].winners = {};
+
+	minigamesData[guildId][game].winners[userId] = (minigamesData[guildId][game].winners[userId] || 0) + 1;
+	writeJson(minigamesFile, minigamesData);
+
 	return reward;
 }
 

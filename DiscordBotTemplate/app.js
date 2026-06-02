@@ -1943,15 +1943,24 @@ client.on(Events.InteractionCreate, async interaction => {
 		const selectedRoleIds = new Set(interaction.values);
 		const menuRoleIds = menuConfig.roles.map(role => role.roleId);
 
+		const errors = [];
 		for (const roleId of menuRoleIds) {
 			if (selectedRoleIds.has(roleId)) {
-				await member.roles.add(roleId).catch(() => null);
+				await member.roles.add(roleId).catch(err => {
+					errors.push(`Kon rol <@&${roleId}> niet toevoegen: ${err.message}`);
+				});
 			} else {
-				await member.roles.remove(roleId).catch(() => null);
+				await member.roles.remove(roleId).catch(err => {
+					errors.push(`Kon rol <@&${roleId}> niet verwijderen: ${err.message}`);
+				});
 			}
 		}
 
-		await interaction.reply({ content: 'Je rollen zijn bijgewerkt.', flags: 64 });
+		if (errors.length > 0) {
+			await interaction.reply({ content: `❌ Enkele rollen konden niet worden bijgewerkt:\n${errors.join('\n')}`, flags: 64 });
+		} else {
+			await interaction.reply({ content: '✅ Je rollen zijn bijgewerkt.', flags: 64 });
+		}
 		return;
 	}
 
