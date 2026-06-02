@@ -1596,8 +1596,12 @@ client.on(Events.InteractionCreate, async interaction => {
 
 				const hasRole = member.roles.cache.has(roleId);
 				if (hasRole) {
-					await member.roles.remove(roleId).catch(() => null);
-					await interaction.reply({ content: `Rol <@&${roleId}> verwijderd.`, flags: 64 });
+					try {
+						await member.roles.remove(roleId);
+						await interaction.reply({ content: `✅ Rol <@&${roleId}> verwijderd.`, flags: 64 });
+					} catch (err) {
+						await interaction.reply({ content: `❌ Kon rol niet verwijderen: ${err.message}`, flags: 64 });
+					}
 					return;
 				}
 
@@ -1609,8 +1613,12 @@ client.on(Events.InteractionCreate, async interaction => {
 					}
 				}
 
-				await member.roles.add(roleId).catch(() => null);
-				await interaction.reply({ content: `Rol <@&${roleId}> toegevoegd.`, flags: 64 });
+				try {
+					await member.roles.add(roleId);
+					await interaction.reply({ content: `✅ Rol <@&${roleId}> toegevoegd.`, flags: 64 });
+				} catch (err) {
+					await interaction.reply({ content: `❌ Kon rol niet toevoegen: ${err.message}`, flags: 64 });
+				}
 				return;
 			}
 
