@@ -1611,6 +1611,12 @@ client.on(Events.InteractionCreate, async interaction => {
 					diagnose = ` (rol ${role.name} staat hoger dan of gelijk aan de hoogste bot-rol)`;
 				} else if (role.managed) {
 					diagnose = ' (dit is een managed rol van een integratie/bot en kan niet handmatig worden toegekend)';
+				} else if (role.tags?.guildConnections !== undefined) {
+					diagnose = ' (dit is een Linked Role — die kan alleen via verbindingen/connecties verkregen worden, een bot mag deze nooit toekennen)';
+				} else if (role.tags?.premiumSubscriberRole !== undefined) {
+					diagnose = ' (dit is de server booster rol — die kan een bot niet toekennen)';
+				} else if (role.tags?.subscriptionListingId) {
+					diagnose = ' (dit is een betaalde abonnementsrol — die kan een bot niet toekennen)';
 				}
 
 				const hasRole = member.roles.cache.has(roleId);
