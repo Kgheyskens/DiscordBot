@@ -1653,7 +1653,16 @@ client.on(Events.InteractionCreate, async interaction => {
 						botHasAdmin: botMember?.permissions.has(PermissionFlagsBits.Administrator),
 					}));
 					console.error(err);
-					await interaction.reply({ content: `❌ Kon rol niet toevoegen: ${err.message} (code ${err.code ?? '?'})${diagnose}`, flags: 64 });
+					const debugInfo = [
+						`url: ${err.url ?? '?'}`,
+						`method: ${err.method ?? '?'}`,
+						`status: ${err.status ?? '?'}`,
+						`rol: ${role.name} (pos ${role.position}, managed ${role.managed}, tags ${JSON.stringify(role.tags ?? null)})`,
+						`bot hoogste rol pos: ${botMember?.roles.highest.position ?? '?'} (${botMember?.roles.highest.name ?? '?'})`,
+						`bot admin: ${botMember?.permissions.has(PermissionFlagsBits.Administrator) ?? '?'}`,
+						`raw: ${JSON.stringify(err.rawError ?? null)}`,
+					].join('\n');
+					await interaction.reply({ content: `❌ Kon rol niet toevoegen: ${err.message} (code ${err.code ?? '?'})${diagnose}\n\`\`\`\n${debugInfo.slice(0, 1800)}\n\`\`\``, flags: 64 });
 				}
 				return;
 			}
