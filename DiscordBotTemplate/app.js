@@ -1576,7 +1576,8 @@ client.on(Events.InteractionCreate, async interaction => {
 				return;
 			}
 
-			if (interaction.customId.startsWith('rolecat:toggle:')) {
+			if (interaction.customId.startsWith('rolecat:toggle:') || interaction.customId.startsWith('rolecat:ptoggle:')) {
+				const isPersonal = interaction.customId.startsWith('rolecat:ptoggle:');
 				const [, , categoryId, roleId] = interaction.customId.split(':');
 				const category = roleCategoryService.getCategory(interaction.guildId, categoryId);
 				if (!category) {
@@ -1601,71 +1602,60 @@ client.on(Events.InteractionCreate, async interaction => {
 					return;
 				}
 
-				const botMember = interaction.guild.members.me;
-				let diagnose = '';
-				if (!botMember) {
-					diagnose = ' (bot is geen lid van deze server — opnieuw uitnodigen met de `bot` scope)';
-				} else if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
-					diagnose = ' (bot mist Manage Roles)';
-				} else if (role.position >= botMember.roles.highest.position) {
-					diagnose = ` (rol ${role.name} staat hoger dan of gelijk aan de hoogste bot-rol)`;
-				} else if (role.managed) {
-					diagnose = ' (dit is een managed rol van een integratie/bot en kan niet handmatig worden toegekend)';
-				} else if (role.tags?.guildConnections !== undefined) {
-					diagnose = ' (dit is een Linked Role — die kan alleen via verbindingen/connecties verkregen worden, een bot mag deze nooit toekennen)';
-				} else if (role.tags?.premiumSubscriberRole !== undefined) {
-					diagnose = ' (dit is de server booster rol — die kan een bot niet toekennen)';
-				} else if (role.tags?.subscriptionListingId) {
-					diagnose = ' (dit is een betaalde abonnementsrol — die kan een bot niet toekennen)';
-				}
+				const explainRoleError = (err) => {
+					const botMember = interaction.guild.members.me;
+					if (err.code === 50001 && interaction.guild.features.includes('COMMUNITY')) {
+						return 'Deze server vereist 2FA voor moderatie. De eigenaar van de bot moet 2FA aanzetten op zijn Discord-account.';
+					}
+					if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
+						return 'De bot mist de Manage Roles permission.';
+					}
+					if (role.position >= botMember.roles.highest.position) {
+						return `De rol staat hoger dan of gelijk aan de hoogste bot-rol — versleep de bot-rol naar boven in Serverinstellingen → Rollen.`;
+					}
+					if (role.managed || role.tags?.premiumSubscriberRole !== undefined || role.tags?.guildConnections !== undefined || role.tags?.subscriptionListingId) {
+						return 'Deze rol wordt beheerd door Discord of een integratie en kan niet door een bot worden toegekend.';
+					}
+					return `Onbekende fout: ${err.message} (code ${err.code ?? '?'})`;
+				};
 
 				const hasRole = member.roles.cache.has(roleId);
-				if (hasRole) {
-					try {
+				let resultText;
+				try {
+					if (hasRole) {
 						await member.roles.remove(roleId);
-						await interaction.reply({ content: `✅ Rol <@&${roleId}> verwijderd.`, flags: 64 });
-					} catch (err) {
-						console.error(`rolecat remove failed: guild=${interaction.guildId} role=${roleId} code=${err.code}`, err);
-						await interaction.reply({ content: `❌ Kon rol niet verwijderen: ${err.message} (code ${err.code ?? '?'})${diagnose}`, flags: 64 });
+						resultText = `✅ Rol <@&${roleId}> verwijderd.`;
+					} else {
+						if (category.exclusive) {
+							for (const otherRoleId of category.roleIds) {
+								if (otherRoleId !== roleId && member.roles.cache.has(otherRoleId)) {
+									await member.roles.remove(otherRoleId).catch(() => null);
+								}
+							}
+						}
+						await member.roles.add(roleId);
+						resultText = `✅ Rol <@&${roleId}> toegevoegd.`;
+					}
+				} catch (err) {
+					console.error(`rolecat toggle failed: guild=${interaction.guildId} role=${roleId} code=${err.code}`, err);
+					const errorText = `❌ Kon rol niet ${hasRole ? 'verwijderen' : 'toevoegen'}. ${explainRoleError(err)}`;
+					if (isPersonal) {
+						await interaction.update({ content: errorText }).catch(() => null);
+					} else {
+						await interaction.reply({ content: errorText, flags: 64 });
 					}
 					return;
 				}
 
-				if (category.exclusive) {
-					for (const otherRoleId of category.roleIds) {
-						if (otherRoleId !== roleId && member.roles.cache.has(otherRoleId)) {
-							await member.roles.remove(otherRoleId).catch(() => null);
-						}
-					}
-				}
+				const freshMember = await interaction.guild.members.fetch({ user: interaction.user.id, force: true }).catch(() => member);
+				const memberRoleIds = new Set(freshMember.roles.cache.keys());
+				const rows = roleCategoryService.buildPersonalCategoryRows(interaction.guild, category, memberRoleIds);
+				const panelText = `${resultText}\n\n**${category.name}** — groene knoppen zijn rollen die je nu hebt:`;
 
-				try {
-					await member.roles.add(roleId);
-					await interaction.reply({ content: `✅ Rol <@&${roleId}> toegevoegd.`, flags: 64 });
-				} catch (err) {
-					console.error(`rolecat add failed: guild=${interaction.guildId} member=${member.id} role=${roleId} code=${err.code} url=${err.url ?? '?'} method=${err.method ?? '?'}`);
-					console.error('role debug:', JSON.stringify({
-						name: role.name,
-						position: role.position,
-						managed: role.managed,
-						tags: role.tags ?? null,
-						botHighest: botMember?.roles.highest.position,
-						botHasAdmin: botMember?.permissions.has(PermissionFlagsBits.Administrator),
-					}));
-					console.error(err);
-					const debugInfo = [
-						`url: ${err.url ?? '?'}`,
-						`method: ${err.method ?? '?'}`,
-						`status: ${err.status ?? '?'}`,
-						`rol: ${role.name} (pos ${role.position}, managed ${role.managed}, tags ${JSON.stringify(role.tags ?? null)})`,
-						`bot hoogste rol pos: ${botMember?.roles.highest.position ?? '?'} (${botMember?.roles.highest.name ?? '?'})`,
-						`bot admin: ${botMember?.permissions.has(PermissionFlagsBits.Administrator) ?? '?'}`,
-						`lid pending: ${member.pending ?? '?'} | timeout: ${member.communicationDisabledUntil ?? 'nee'} | flags: ${member.flags?.toArray?.().join(',') || 'geen'}`,
-						`bot pending: ${botMember?.pending ?? '?'} | bot timeout: ${botMember?.communicationDisabledUntil ?? 'nee'}`,
-						`guild features: ${interaction.guild.features.join(',') || 'geen'}`,
-						`raw: ${JSON.stringify(err.rawError ?? null)}`,
-					].join('\n');
-					await interaction.reply({ content: `❌ Kon rol niet toevoegen: ${err.message} (code ${err.code ?? '?'})${diagnose}\n\`\`\`\n${debugInfo.slice(0, 1800)}\n\`\`\``, flags: 64 });
+				if (isPersonal) {
+					await interaction.update({ content: panelText, components: rows }).catch(() => null);
+				} else {
+					await interaction.reply({ content: panelText, components: rows, flags: 64 });
 				}
 				return;
 			}

@@ -125,6 +125,33 @@ function buildCategoryButtons(guild, category) {
 	return rows;
 }
 
+function buildPersonalCategoryRows(guild, category, memberRoleIds) {
+	const rows = [];
+	let current = new ActionRowBuilder();
+	let count = 0;
+
+	for (const roleId of category.roleIds) {
+		const role = guild.roles.cache.get(roleId);
+		const label = role?.name?.slice(0, 80) || `Rol ${roleId.slice(0, 6)}`;
+		const hasRole = memberRoleIds.has(roleId);
+		const button = new ButtonBuilder()
+			.setCustomId(`rolecat:ptoggle:${category.id}:${roleId}`)
+			.setLabel(label)
+			.setStyle(hasRole ? ButtonStyle.Success : ButtonStyle.Secondary);
+		current.addComponents(button);
+		count += 1;
+		if (count % 5 === 0) {
+			rows.push(current);
+			current = new ActionRowBuilder();
+		}
+		if (rows.length >= 5) break;
+	}
+	if (current.components.length > 0 && rows.length < 5) {
+		rows.push(current);
+	}
+	return rows;
+}
+
 async function postOrUpdateCategoryMessage(guild, category) {
 	if (!category.channelId) return { error: 'Geen kanaal ingesteld voor deze categorie.' };
 	if (category.roleIds.length === 0) return { error: 'Voeg eerst rollen toe aan de categorie.' };
@@ -160,5 +187,6 @@ module.exports = {
 	findCategoryByMessageId,
 	buildCategoryEmbed,
 	buildCategoryButtons,
+	buildPersonalCategoryRows,
 	postOrUpdateCategoryMessage,
 };
