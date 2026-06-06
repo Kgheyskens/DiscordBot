@@ -1643,7 +1643,16 @@ client.on(Events.InteractionCreate, async interaction => {
 					await member.roles.add(roleId);
 					await interaction.reply({ content: `✅ Rol <@&${roleId}> toegevoegd.`, flags: 64 });
 				} catch (err) {
-					console.error(`rolecat add failed: guild=${interaction.guildId} role=${roleId} code=${err.code}`, err);
+					console.error(`rolecat add failed: guild=${interaction.guildId} member=${member.id} role=${roleId} code=${err.code} url=${err.url ?? '?'} method=${err.method ?? '?'}`);
+					console.error('role debug:', JSON.stringify({
+						name: role.name,
+						position: role.position,
+						managed: role.managed,
+						tags: role.tags ?? null,
+						botHighest: botMember?.roles.highest.position,
+						botHasAdmin: botMember?.permissions.has(PermissionFlagsBits.Administrator),
+					}));
+					console.error(err);
 					await interaction.reply({ content: `❌ Kon rol niet toevoegen: ${err.message} (code ${err.code ?? '?'})${diagnose}`, flags: 64 });
 				}
 				return;
