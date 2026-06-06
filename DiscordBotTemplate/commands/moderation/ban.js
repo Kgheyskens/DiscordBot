@@ -32,4 +32,4 @@ module.exports = {
 		await interaction.reply({ content: `${target} is gebanned.${reason ? ` Reden: ${reason}` : ''}` });
 		await logModAction(interaction.guild, { action: 'ban', moderator: interaction.user, target, reason, extra: days ? `Deleted ${days}d aan berichten.` : null });
 	},
-};
+}; 

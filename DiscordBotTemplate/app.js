@@ -1594,13 +1594,33 @@ client.on(Events.InteractionCreate, async interaction => {
 					return;
 				}
 
+				const role = interaction.guild.roles.cache.get(roleId)
+					|| await interaction.guild.roles.fetch(roleId).catch(() => null);
+				if (!role) {
+					await interaction.reply({ content: `❌ Rol bestaat niet (meer) in deze server (ID: ${roleId}).`, flags: 64 });
+					return;
+				}
+
+				const botMember = interaction.guild.members.me;
+				let diagnose = '';
+				if (!botMember) {
+					diagnose = ' (bot is geen lid van deze server — opnieuw uitnodigen met de `bot` scope)';
+				} else if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
+					diagnose = ' (bot mist Manage Roles)';
+				} else if (role.position >= botMember.roles.highest.position) {
+					diagnose = ` (rol ${role.name} staat hoger dan of gelijk aan de hoogste bot-rol)`;
+				} else if (role.managed) {
+					diagnose = ' (dit is een managed rol van een integratie/bot en kan niet handmatig worden toegekend)';
+				}
+
 				const hasRole = member.roles.cache.has(roleId);
 				if (hasRole) {
 					try {
 						await member.roles.remove(roleId);
 						await interaction.reply({ content: `✅ Rol <@&${roleId}> verwijderd.`, flags: 64 });
 					} catch (err) {
-						await interaction.reply({ content: `❌ Kon rol niet verwijderen: ${err.message}`, flags: 64 });
+						console.error(`rolecat remove failed: guild=${interaction.guildId} role=${roleId} code=${err.code}`, err);
+						await interaction.reply({ content: `❌ Kon rol niet verwijderen: ${err.message} (code ${err.code ?? '?'})${diagnose}`, flags: 64 });
 					}
 					return;
 				}
@@ -1617,7 +1637,8 @@ client.on(Events.InteractionCreate, async interaction => {
 					await member.roles.add(roleId);
 					await interaction.reply({ content: `✅ Rol <@&${roleId}> toegevoegd.`, flags: 64 });
 				} catch (err) {
-					await interaction.reply({ content: `❌ Kon rol niet toevoegen: ${err.message}`, flags: 64 });
+					console.error(`rolecat add failed: guild=${interaction.guildId} role=${roleId} code=${err.code}`, err);
+					await interaction.reply({ content: `❌ Kon rol niet toevoegen: ${err.message} (code ${err.code ?? '?'})${diagnose}`, flags: 64 });
 				}
 				return;
 			}
