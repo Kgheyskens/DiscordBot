@@ -1,7 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const { getSettings } = require('./guildSettings');
 
-async function logModAction(guild, { action, moderator, target, reason, extra }) {
+async function logModAction(guild, { action, moderator, target, reason, extra, ping }) {
 	const settings = getSettings(guild.id);
 	const channelId = settings.moderation?.logChannelId || settings.channels?.modlog;
 	if (!channelId) return;
@@ -19,7 +19,7 @@ async function logModAction(guild, { action, moderator, target, reason, extra })
 		.setTimestamp(new Date());
 	if (extra) embed.addFields({ name: 'Extra', value: extra });
 
-	await channel.send({ embeds: [embed] }).catch(() => null);
+	await channel.send({ content: ping || undefined, embeds: [embed] }).catch(() => null);
 }
 
 module.exports = { logModAction };

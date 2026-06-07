@@ -108,6 +108,7 @@ function buildMainButtons() {
 		new ActionRowBuilder().addComponents(
 			new ButtonBuilder().setCustomId('setup:menu:reminders').setLabel('⏰ Reminders').setStyle(ButtonStyle.Primary),
 			new ButtonBuilder().setCustomId('setup:menu:bumpreminders').setLabel('🚀 Bump').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:menu:antinuke').setLabel('🛡️ Anti-Nuke & Raid').setStyle(ButtonStyle.Primary),
 			new ButtonBuilder().setCustomId('setup:menu:status').setLabel('Status').setStyle(ButtonStyle.Secondary),
 			new ButtonBuilder().setCustomId('setup:menu:close').setLabel('Sluiten').setStyle(ButtonStyle.Secondary),
 		),

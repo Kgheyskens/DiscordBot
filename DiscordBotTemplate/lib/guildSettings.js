@@ -77,6 +77,23 @@ const DEFAULT_SETTINGS = {
 			banAt: 7,
 		},
 	},
+	antiNuke: {
+		enabled: true,
+		channelDeleteLimit: 3,
+		roleDeleteLimit: 3,
+		banKickLimit: 3,
+		windowSeconds: 10,
+		whitelistRoleIds: [],
+		whitelistUserIds: [],
+	},
+	antiRaid: {
+		enabled: true,
+		joinLimit: 8,
+		windowSeconds: 30,
+		lockdownMinutes: 10,
+		accountAgeEnabled: true,
+		minAccountAgeDays: 7,
+	},
 	birthdays: {
 		enabled: false,
 		notificationChannelId: null,
@@ -241,6 +258,14 @@ function setBumpReminders(guildId, partial) {
 	return saveSettings(guildId, { bumpReminders: partial || {} });
 }
 
+function setAntiNuke(guildId, partial) {
+	return saveSettings(guildId, { antiNuke: partial || {} });
+}
+
+function setAntiRaid(guildId, partial) {
+	return saveSettings(guildId, { antiRaid: partial || {} });
+}
+
 module.exports = {
 	guildSettingsFile,
 	DEFAULT_SETTINGS,
@@ -259,6 +284,8 @@ module.exports = {
 	setBirthdays,
 	setReminders,
 	setBumpReminders,
+	setAntiNuke,
+	setAntiRaid,
 	getApplicationRoles,
 	setApplicationRoles,
 	addApplicationRole,

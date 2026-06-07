@@ -12,21 +12,33 @@ function writeBirthdays(data) {
 	writeJson(birthdaysFile, data);
 }
 
-function setBirthday(guildId, userId, ddmmFormat) {
-	if (!/^\d{4}$/.test(ddmmFormat)) {
-		throw new Error('Birthday format must be DDMM (e.g., 0512 for May 12)');
+// Legacy entries zijn DDMM-strings; nieuwe entries zijn { day, month, year|null }
+function normalize(entry) {
+	if (!entry) return null;
+	if (typeof entry === 'string') {
+		return {
+			day: parseInt(entry.slice(0, 2), 10),
+			month: parseInt(entry.slice(2, 4), 10),
+			year: null,
+		};
 	}
+	return entry;
+}
 
+function setBirthday(guildId, userId, { day, month, year = null }) {
+	if (!Number.isInteger(day) || !Number.isInteger(month) || day < 1 || day > 31 || month < 1 || month > 12) {
+		throw new Error('Ongeldige datum.');
+	}
 	const all = readBirthdays();
 	const guild = all[guildId] || {};
-	guild[userId] = ddmmFormat;
+	guild[userId] = { day, month, year };
 	all[guildId] = guild;
 	writeBirthdays(all);
 }
 
 function getBirthday(guildId, userId) {
 	const all = readBirthdays();
-	return all[guildId]?.[userId] || null;
+	return normalize(all[guildId]?.[userId]);
 }
 
 function getTodaysBirthdays(guildId) {
@@ -34,11 +46,14 @@ function getTodaysBirthdays(guildId) {
 	const guild = all[guildId] || {};
 
 	const today = new Date();
-	const todayDDMM = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0');
+	const day = today.getDate();
+	const month = today.getMonth() + 1;
+	const currentYear = today.getFullYear();
 
 	return Object.entries(guild)
-		.filter(([_, ddmm]) => ddmm === todayDDMM)
-		.map(([userId]) => userId);
+		.map(([userId, entry]) => ({ userId, ...normalize(entry) }))
+		.filter(b => b.day === day && b.month === month)
+		.map(b => ({ userId: b.userId, age: b.year ? currentYear - b.year : null }));
 }
 
 function deleteBirthday(guildId, userId) {

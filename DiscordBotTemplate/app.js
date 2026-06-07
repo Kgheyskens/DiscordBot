@@ -44,6 +44,7 @@ const { checkCommandAllowed } = require('./lib/commandRestrictions');
 const { migrateGuildConfigs } = require('./lib/migrateConfigs');
 const setupWizard = require('./lib/setupWizard');
 const shopMenu = require('./lib/shopMenu');
+const antiNukeService = require('./lib/antiNukeService');
 const roleCategoryService = require('./lib/roleCategoryService');
 const minigameService = require('./lib/minigameService');
 const wordList = require('./lib/wordList');
@@ -91,7 +92,7 @@ const ENABLE_PRIVILEGED_INTENTS = process.env.ENABLE_PRIVILEGED_INTENTS === 'tru
 
 const BOT_TOKEN = process.env.CLIENT_TOKEN;
 
-const clientIntents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions];
+const clientIntents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.GuildModeration];
 
 if (ENABLE_PRIVILEGED_INTENTS) {
 	clientIntents.push(GatewayIntentBits.GuildMembers, GatewayIntentBits.MessageContent);
@@ -519,6 +520,7 @@ async function postHallOfFame(guild) {
 
 async function checkSchedules() {
 	try {
+		await antiNukeService.checkLockdowns(client).catch(err => console.error('checkLockdowns failed:', err));
 		const halloffameStateFile = path.join(__dirname, 'data', 'halloffameState.json');
 		const hofState = readJson(halloffameStateFile, {});
 		const now = new Date();
@@ -589,10 +591,11 @@ async function checkSchedules() {
 					const channel = birthdayChannelId ? await guild.channels.fetch(birthdayChannelId).catch(() => null) : null;
 					const birthdayRoleId = settings.birthdays.roleId || null;
 					const birthdayUsers = birthdayService.getTodaysBirthdays(guild.id);
+					const birthdayUserIds = birthdayUsers.map(b => b.userId);
 
 					// Verjaardagsrol van gisteren weer afnemen
 					for (const userId of guildState.roleGivenTo || []) {
-						if (birthdayRoleId && !birthdayUsers.includes(userId)) {
+						if (birthdayRoleId && !birthdayUserIds.includes(userId)) {
 							const member = await guild.members.fetch(userId).catch(() => null);
 							await member?.roles.remove(birthdayRoleId).catch(err => {
 								console.error(`Failed to remove birthday role from ${userId}:`, err.message);
@@ -601,13 +604,19 @@ async function checkSchedules() {
 					}
 
 					const roleGivenTo = [];
-					for (const userId of birthdayUsers) {
+					for (const { userId, age } of birthdayUsers) {
 						try {
 							const member = await guild.members.fetch(userId).catch(() => null);
 							if (member) {
 								if (channel) {
 									const message = settings.birthdays.message || 'Happy Birthday {user}! 🎉';
-									await channel.send(message.replace('{user}', member.toString()));
+									let finalMessage = message
+										.replace('{user}', member.toString())
+										.replace('{age}', age != null ? String(age) : '');
+									if (age != null && !message.includes('{age}')) {
+										finalMessage += ` Gefeliciteerd met je **${age}e**! 🥳`;
+									}
+									await channel.send(finalMessage);
 								}
 								if (birthdayRoleId) {
 									await member.roles.add(birthdayRoleId).catch(err => {
@@ -1160,9 +1169,43 @@ client.on(Events.GuildCreate, async guild => {
 
 client.on(Events.GuildMemberAdd, async member => {
 	try {
+		const { kicked } = await antiNukeService.handleMemberJoin(member);
+		if (kicked) return;
 		await sendWelcomeMessage(member);
 	} catch (error) {
 		console.error('GuildMemberAdd handler failed:', error);
+	}
+});
+
+client.on(Events.ChannelDelete, async channel => {
+	try {
+		await antiNukeService.handleChannelDelete(channel);
+	} catch (error) {
+		console.error('ChannelDelete handler failed:', error);
+	}
+});
+
+client.on(Events.GuildRoleDelete, async role => {
+	try {
+		await antiNukeService.handleRoleDelete(role);
+	} catch (error) {
+		console.error('GuildRoleDelete handler failed:', error);
+	}
+});
+
+client.on(Events.GuildBanAdd, async ban => {
+	try {
+		await antiNukeService.handleBanAdd(ban);
+	} catch (error) {
+		console.error('GuildBanAdd handler failed:', error);
+	}
+});
+
+client.on(Events.GuildMemberRemove, async member => {
+	try {
+		await antiNukeService.handleMemberRemove(member);
+	} catch (error) {
+		console.error('GuildMemberRemove handler failed:', error);
 	}
 });
 

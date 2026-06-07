@@ -28,6 +28,8 @@ const {
 	setBirthdays,
 	setReminders,
 	setBumpReminders,
+	setAntiNuke,
+	setAntiRaid,
 	getApplicationRoles,
 	addApplicationRole,
 	updateApplicationRole,
@@ -391,6 +393,7 @@ async function handleMenu(interaction, target) {
 			new ButtonBuilder().setCustomId('setup:birthdays:toggle').setLabel(bd.enabled ? 'Zet UIT' : 'Zet AAN').setStyle(bd.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
 			new ButtonBuilder().setCustomId('setup:birthdays:channel').setLabel('Kanaal').setStyle(ButtonStyle.Primary),
 			new ButtonBuilder().setCustomId('setup:birthdays:role').setLabel('Birthday rol').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:birthdays:message').setLabel('Message').setStyle(ButtonStyle.Primary),
 		);
 		await interaction.update({
 			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('🎂 Birthdays').setDescription(`
@@ -438,6 +441,46 @@ Users can set reminders like: /remind 2h do laundry
 **Functie:** Bot stuurt reminder wanneer het weer tijd is om te bumpen
 			`)],
 			components: [row1, backRow()],
+		}).catch(() => null);
+		return;
+	}
+
+	if (target === 'antinuke') {
+		const settings = getSettings(interaction.guildId);
+		const nuke = settings.antiNuke || {};
+		const raid = settings.antiRaid || {};
+		const whitelist = (nuke.whitelistRoleIds || []).map(id => `<@&${id}>`).join(' ') || '_geen_';
+
+		const row1 = new ActionRowBuilder().addComponents(
+			new ButtonBuilder().setCustomId('setup:antinuke:toggleNuke').setLabel(nuke.enabled ? 'Anti-nuke UIT' : 'Anti-nuke AAN').setStyle(nuke.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+			new ButtonBuilder().setCustomId('setup:antinuke:toggleRaid').setLabel(raid.enabled ? 'Anti-raid UIT' : 'Anti-raid AAN').setStyle(raid.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+			new ButtonBuilder().setCustomId('setup:antinuke:toggleAge').setLabel(raid.accountAgeEnabled ? 'Account-age UIT' : 'Account-age AAN').setStyle(raid.accountAgeEnabled ? ButtonStyle.Danger : ButtonStyle.Success),
+		);
+		const row2 = new ActionRowBuilder().addComponents(
+			new ButtonBuilder().setCustomId('setup:antinuke:nukeThresholds').setLabel('Nuke-limieten').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:antinuke:raidThresholds').setLabel('Raid-instellingen').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:antinuke:whitelist').setLabel('Whitelist rollen').setStyle(ButtonStyle.Primary),
+		);
+
+		await interaction.update({
+			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('🛡️ Anti-Nuke & Raid').setDescription(`
+**Anti-nuke:** ${nuke.enabled ? '✅ aan' : '❌ uit'} — dader verliest alle rollen + owner-alert
+• Kanalen verwijderen: max ${nuke.channelDeleteLimit ?? 3}x per ${nuke.windowSeconds ?? 10}s
+• Rollen verwijderen: max ${nuke.roleDeleteLimit ?? 3}x per ${nuke.windowSeconds ?? 10}s
+• Bans/kicks: max ${nuke.banKickLimit ?? 3}x per ${nuke.windowSeconds ?? 10}s
+• Whitelist: ${whitelist}
+
+**Anti-raid:** ${raid.enabled ? '✅ aan' : '❌ uit'} — raiders gekickt + tijdelijke lockdown
+• Trigger: ${raid.joinLimit ?? 8} joins binnen ${raid.windowSeconds ?? 30}s
+• Lockdown: ${raid.lockdownMinutes ?? 10} minuten (verificatieniveau op maximum)
+
+**Account-age check:** ${raid.accountAgeEnabled ? '✅ aan' : '❌ uit'}
+• Accounts jonger dan ${raid.minAccountAgeDays ?? 7} dagen worden gekickt
+
+_Alerts gaan naar het modlog-kanaal. De owner en whitelist-rollen worden nooit gestraft._
+_⚠️ Anti-raid en account-age vereisen de GuildMembers privileged intent (ENABLE_PRIVILEGED_INTENTS=true)._
+			`)],
+			components: [row1, row2, backRow()],
 		}).catch(() => null);
 		return;
 	}
@@ -1887,6 +1930,66 @@ async function dispatch(interaction) {
 							.setMaxValues(1),
 						backTarget: 'birthdays',
 					});
+				} else if (action === 'message') {
+					const settings = getSettings(interaction.guildId);
+					const modal = new ModalBuilder().setCustomId('setup:modal:birthdayMessage').setTitle('Birthday message');
+					modal.addComponents(
+						new ActionRowBuilder().addComponents(
+							new TextInputBuilder()
+								.setCustomId('message')
+								.setLabel('Bericht ({user} = jarige, {age} = leeftijd)')
+								.setStyle(TextInputStyle.Paragraph)
+								.setValue(settings.birthdays?.message || 'Happy Birthday {user}! 🎉')
+								.setMaxLength(1000)
+								.setRequired(true),
+						),
+					);
+					await interaction.showModal(modal);
+				}
+				return true;
+			}
+			if (section === 'antinuke') {
+				const settings = getSettings(interaction.guildId);
+				if (action === 'toggleNuke') {
+					setAntiNuke(interaction.guildId, { ...settings.antiNuke, enabled: !settings.antiNuke?.enabled });
+					await handleMenu(interaction, 'antinuke');
+				} else if (action === 'toggleRaid') {
+					setAntiRaid(interaction.guildId, { ...settings.antiRaid, enabled: !settings.antiRaid?.enabled });
+					await handleMenu(interaction, 'antinuke');
+				} else if (action === 'toggleAge') {
+					setAntiRaid(interaction.guildId, { ...settings.antiRaid, accountAgeEnabled: !settings.antiRaid?.accountAgeEnabled });
+					await handleMenu(interaction, 'antinuke');
+				} else if (action === 'nukeThresholds') {
+					const nuke = settings.antiNuke || {};
+					const modal = new ModalBuilder().setCustomId('setup:modal:nukeThresholds').setTitle('Anti-nuke limieten');
+					modal.addComponents(
+						new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('channelDeleteLimit').setLabel('Max kanalen verwijderen (1-20)').setStyle(TextInputStyle.Short).setValue(String(nuke.channelDeleteLimit ?? 3)).setRequired(true)),
+						new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('roleDeleteLimit').setLabel('Max rollen verwijderen (1-20)').setStyle(TextInputStyle.Short).setValue(String(nuke.roleDeleteLimit ?? 3)).setRequired(true)),
+						new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('banKickLimit').setLabel('Max bans/kicks (1-20)').setStyle(TextInputStyle.Short).setValue(String(nuke.banKickLimit ?? 3)).setRequired(true)),
+						new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('windowSeconds').setLabel('Tijdsvenster (5-120 seconden)').setStyle(TextInputStyle.Short).setValue(String(nuke.windowSeconds ?? 10)).setRequired(true)),
+					);
+					await interaction.showModal(modal);
+				} else if (action === 'raidThresholds') {
+					const raid = settings.antiRaid || {};
+					const modal = new ModalBuilder().setCustomId('setup:modal:raidThresholds').setTitle('Anti-raid instellingen');
+					modal.addComponents(
+						new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('joinLimit').setLabel('Joins voor raid-trigger (3-50)').setStyle(TextInputStyle.Short).setValue(String(raid.joinLimit ?? 8)).setRequired(true)),
+						new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('windowSeconds').setLabel('Tijdsvenster (10-300 seconden)').setStyle(TextInputStyle.Short).setValue(String(raid.windowSeconds ?? 30)).setRequired(true)),
+						new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('lockdownMinutes').setLabel('Lockdown duur (1-120 minuten)').setStyle(TextInputStyle.Short).setValue(String(raid.lockdownMinutes ?? 10)).setRequired(true)),
+						new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('minAccountAgeDays').setLabel('Min accountleeftijd (1-365 dagen)').setStyle(TextInputStyle.Short).setValue(String(raid.minAccountAgeDays ?? 7)).setRequired(true)),
+					);
+					await interaction.showModal(modal);
+				} else if (action === 'whitelist') {
+					await showSettingSelect(interaction, {
+						title: '🛡️ Anti-nuke whitelist',
+						description: 'Kies rollen die nooit gestraft worden door anti-nuke (bv. co-owners, trusted admins). De server-owner is altijd al uitgezonderd.',
+						select: new RoleSelectMenuBuilder()
+							.setCustomId('setup:antinuke:whitelist')
+							.setPlaceholder('Kies rollen')
+							.setMinValues(0)
+							.setMaxValues(10),
+						backTarget: 'antinuke',
+					});
 				}
 				return true;
 			}
@@ -1977,6 +2080,11 @@ async function dispatch(interaction) {
 				await handleMenu(interaction, 'birthdays');
 				return true;
 			}
+			if (section === 'antinuke' && action === 'whitelist') {
+				setAntiNuke(interaction.guildId, { ...getSettings(interaction.guildId).antiNuke, whitelistRoleIds: interaction.values });
+				await handleMenu(interaction, 'antinuke');
+				return true;
+			}
 		}
 		if (interaction.isModalSubmit()) {
 			if (section === 'modal' && (action === 'approle-add' || action === 'approle-rename')) {
@@ -2001,6 +2109,40 @@ async function dispatch(interaction) {
 			}
 			if (section === 'modal' && (action === 'halloffameDay' || action === 'halloffameHour')) {
 				await handleHallOfFameModal(interaction);
+				return true;
+			}
+			if (section === 'modal' && action === 'nukeThresholds') {
+				const nuke = getSettings(interaction.guildId).antiNuke || {};
+				setAntiNuke(interaction.guildId, {
+					...nuke,
+					channelDeleteLimit: clampInt(interaction.fields.getTextInputValue('channelDeleteLimit'), 1, 20, nuke.channelDeleteLimit ?? 3),
+					roleDeleteLimit: clampInt(interaction.fields.getTextInputValue('roleDeleteLimit'), 1, 20, nuke.roleDeleteLimit ?? 3),
+					banKickLimit: clampInt(interaction.fields.getTextInputValue('banKickLimit'), 1, 20, nuke.banKickLimit ?? 3),
+					windowSeconds: clampInt(interaction.fields.getTextInputValue('windowSeconds'), 5, 120, nuke.windowSeconds ?? 10),
+				});
+				await interaction.reply({ content: '✅ Anti-nuke limieten bijgewerkt.', flags: 64 });
+				return true;
+			}
+			if (section === 'modal' && action === 'raidThresholds') {
+				const raid = getSettings(interaction.guildId).antiRaid || {};
+				setAntiRaid(interaction.guildId, {
+					...raid,
+					joinLimit: clampInt(interaction.fields.getTextInputValue('joinLimit'), 3, 50, raid.joinLimit ?? 8),
+					windowSeconds: clampInt(interaction.fields.getTextInputValue('windowSeconds'), 10, 300, raid.windowSeconds ?? 30),
+					lockdownMinutes: clampInt(interaction.fields.getTextInputValue('lockdownMinutes'), 1, 120, raid.lockdownMinutes ?? 10),
+					minAccountAgeDays: clampInt(interaction.fields.getTextInputValue('minAccountAgeDays'), 1, 365, raid.minAccountAgeDays ?? 7),
+				});
+				await interaction.reply({ content: '✅ Anti-raid instellingen bijgewerkt.', flags: 64 });
+				return true;
+			}
+			if (section === 'modal' && action === 'birthdayMessage') {
+				const message = interaction.fields.getTextInputValue('message').trim();
+				if (!message) {
+					await interaction.reply({ content: '❌ Het bericht mag niet leeg zijn.', flags: 64 });
+					return true;
+				}
+				setBirthdays(interaction.guildId, { ...getSettings(interaction.guildId).birthdays, message });
+				await interaction.reply({ content: `✅ Birthday message bijgewerkt:\n> ${message.replace('{user}', interaction.user.toString())}`, flags: 64 });
 				return true;
 			}
 			await handleModalSubmit(interaction);
