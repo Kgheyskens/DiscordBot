@@ -50,6 +50,8 @@ const DEFAULT_SETTINGS = {
 	},
 	crownshop: {
 		xpPerCrown: 25,
+		coinsPerCrown: 100,
+		colorRolePrice: 750,
 	},
 	challenge: {
 		enabled: false,

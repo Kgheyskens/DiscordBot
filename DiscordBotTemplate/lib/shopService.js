@@ -99,6 +99,10 @@ function findItem(guildId, itemId) {
 	return listItems(guildId).find(i => i.id === itemId) || null;
 }
 
+function categorizeItem(item) {
+	return (item.type === 'role' || item.type === 'customrole') ? 'roles' : 'upgrades';
+}
+
 function purchaseItem({ guildId, userId, itemId }) {
 	const item = findItem(guildId, itemId);
 	if (!item) return { error: 'Item niet gevonden.' };
@@ -119,4 +123,5 @@ module.exports = {
 	removeItem,
 	findItem,
 	purchaseItem,
+	categorizeItem,
 };

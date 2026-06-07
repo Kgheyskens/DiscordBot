@@ -36,7 +36,7 @@ const SECTIONS = {
 			{ name: 'Coins verdienen', value: '/work • /daily • /rob • /pay • /gamble (coinflip/roulette/blackjack)' },
 			{ name: 'Kroontjes verdienen', value: 'Minigames winnen • kroontjes verschijnen willekeurig in chat (claim-knop)' },
 			{ name: 'Stats', value: '/balance (beide) • /leaderboard coins/kroontjes/levels' },
-			{ name: 'Shops', value: '/shop view/buy/add/remove (coins) • /crownshop buyxp/buysave/saves (kroontjes)' },
+			{ name: 'Shops', value: '/shop (rollen, upgrades, kroontjes) • /crownshop (XP & saves) • /saves' },
 		],
 	},
 	minigames: {

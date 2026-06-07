@@ -31,7 +31,7 @@ module.exports = {
 			);
 
 		// Post to modlog
-		const logChannelId = settings.moderation?.logChannelId;
+		const logChannelId = settings.moderation?.logChannelId || settings.channels?.modlog;
 		if (logChannelId) {
 			const logChannel = await interaction.guild.channels.fetch(logChannelId).catch(() => null);
 			if (logChannel) {

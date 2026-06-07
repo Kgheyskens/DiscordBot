@@ -129,6 +129,16 @@ function backRow() {
 	);
 }
 
+async function showSettingSelect(interaction, { title, description, select, backTarget }) {
+	const back = new ActionRowBuilder().addComponents(
+		new ButtonBuilder().setCustomId(`setup:menu:${backTarget}`).setLabel('Terug').setStyle(ButtonStyle.Secondary),
+	);
+	await interaction.update({
+		embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle(title).setDescription(`${description}\n\n_Tip: laat de selectie leeg om te ontkoppelen._`)],
+		components: [new ActionRowBuilder().addComponents(select), back],
+	}).catch(() => null);
+}
+
 async function handleMenu(interaction, target) {
 	if (!isAdmin(interaction)) {
 		await interaction.reply({ content: 'Alleen admins.', flags: 64 });
@@ -380,11 +390,13 @@ async function handleMenu(interaction, target) {
 		const row1 = new ActionRowBuilder().addComponents(
 			new ButtonBuilder().setCustomId('setup:birthdays:toggle').setLabel(bd.enabled ? 'Zet UIT' : 'Zet AAN').setStyle(bd.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
 			new ButtonBuilder().setCustomId('setup:birthdays:channel').setLabel('Kanaal').setStyle(ButtonStyle.Primary),
+			new ButtonBuilder().setCustomId('setup:birthdays:role').setLabel('Birthday rol').setStyle(ButtonStyle.Primary),
 		);
 		await interaction.update({
 			embeds: [new EmbedBuilder().setColor(0xb40f0f).setTitle('🎂 Birthdays').setDescription(`
 **Status:** ${bd.enabled ? '✅ aan' : '❌ uit'}
 **Notification kanaal:** ${bd.notificationChannelId ? `<#${bd.notificationChannelId}>` : '_niet ingesteld_'}
+**Birthday rol:** ${bd.roleId ? `<@&${bd.roleId}>` : '_niet ingesteld_'}
 **Bonus coins:** ${bd.bonusCoins || 100}
 **Message:** ${bd.message || 'Happy Birthday {user}! 🎉'}
 			`)],
@@ -1833,8 +1845,17 @@ async function dispatch(interaction) {
 					setModeration(interaction.guildId, { ...settings.moderation, enabled: !settings.moderation?.enabled });
 					await handleMenu(interaction, 'moderation');
 				} else if (action === 'logchannel') {
-					// Channel select will follow
-					await handleMenu(interaction, 'moderation');
+					await showSettingSelect(interaction, {
+						title: '⚠️ Modlog kanaal',
+						description: 'Kies het kanaal waar moderatie-acties gelogd worden.',
+						select: new ChannelSelectMenuBuilder()
+							.setCustomId('setup:moderation:logchannel')
+							.setPlaceholder('Kies een kanaal')
+							.setMinValues(0)
+							.setMaxValues(1)
+							.setChannelTypes([ChannelType.GuildText, ChannelType.GuildAnnouncement]),
+						backTarget: 'moderation',
+					});
 				}
 				return true;
 			}
@@ -1843,6 +1864,29 @@ async function dispatch(interaction) {
 					const settings = getSettings(interaction.guildId);
 					setBirthdays(interaction.guildId, { ...settings.birthdays, enabled: !settings.birthdays?.enabled });
 					await handleMenu(interaction, 'birthdays');
+				} else if (action === 'channel') {
+					await showSettingSelect(interaction, {
+						title: '🎂 Birthday kanaal',
+						description: 'Kies het kanaal waar verjaardagsberichten komen.',
+						select: new ChannelSelectMenuBuilder()
+							.setCustomId('setup:birthdays:channel')
+							.setPlaceholder('Kies een kanaal')
+							.setMinValues(0)
+							.setMaxValues(1)
+							.setChannelTypes([ChannelType.GuildText, ChannelType.GuildAnnouncement]),
+						backTarget: 'birthdays',
+					});
+				} else if (action === 'role') {
+					await showSettingSelect(interaction, {
+						title: '🎂 Birthday rol',
+						description: 'Kies de rol die de jarige op zijn/haar verjaardag krijgt (wordt de dag erna automatisch weer afgenomen).',
+						select: new RoleSelectMenuBuilder()
+							.setCustomId('setup:birthdays:role')
+							.setPlaceholder('Kies een rol')
+							.setMinValues(0)
+							.setMaxValues(1),
+						backTarget: 'birthdays',
+					});
 				}
 				return true;
 			}
@@ -1859,6 +1903,29 @@ async function dispatch(interaction) {
 					const settings = getSettings(interaction.guildId);
 					setBumpReminders(interaction.guildId, { ...settings.bumpReminders, enabled: !settings.bumpReminders?.enabled });
 					await handleMenu(interaction, 'bumpreminders');
+				} else if (action === 'role') {
+					await showSettingSelect(interaction, {
+						title: '🚀 Bumper role',
+						description: 'Kies de rol die gepingd wordt bij een bump reminder.',
+						select: new RoleSelectMenuBuilder()
+							.setCustomId('setup:bumpreminders:role')
+							.setPlaceholder('Kies een rol')
+							.setMinValues(0)
+							.setMaxValues(1),
+						backTarget: 'bumpreminders',
+					});
+				} else if (action === 'channel') {
+					await showSettingSelect(interaction, {
+						title: '🚀 Bump kanaal',
+						description: 'Kies het kanaal waar bump reminders komen.',
+						select: new ChannelSelectMenuBuilder()
+							.setCustomId('setup:bumpreminders:channel')
+							.setPlaceholder('Kies een kanaal')
+							.setMinValues(0)
+							.setMaxValues(1)
+							.setChannelTypes([ChannelType.GuildText, ChannelType.GuildAnnouncement]),
+						backTarget: 'bumpreminders',
+					});
 				}
 				return true;
 			}
@@ -1875,19 +1942,19 @@ async function dispatch(interaction) {
 			if (section === 'rolecat' && action === 'channel') { await handleRoleCatInteraction(interaction); return true; }
 			if (section === 'minigame' && action === 'channel') { await handleMinigameInteraction(interaction); return true; }
 			if (section === 'moderation' && action === 'logchannel') {
-				const channelId = interaction.values[0];
+				const channelId = interaction.values[0] || null;
 				setModeration(interaction.guildId, { ...getSettings(interaction.guildId).moderation, logChannelId: channelId });
 				await handleMenu(interaction, 'moderation');
 				return true;
 			}
 			if (section === 'birthdays' && action === 'channel') {
-				const channelId = interaction.values[0];
+				const channelId = interaction.values[0] || null;
 				setBirthdays(interaction.guildId, { ...getSettings(interaction.guildId).birthdays, notificationChannelId: channelId });
 				await handleMenu(interaction, 'birthdays');
 				return true;
 			}
 			if (section === 'bumpreminders' && action === 'channel') {
-				const channelId = interaction.values[0];
+				const channelId = interaction.values[0] || null;
 				setBumpReminders(interaction.guildId, { ...getSettings(interaction.guildId).bumpReminders, bumpChannelId: channelId });
 				await handleMenu(interaction, 'bumpreminders');
 				return true;
@@ -1899,9 +1966,15 @@ async function dispatch(interaction) {
 			if (section === 'rolecat' && action === 'roles') { await handleRoleCatInteraction(interaction); return true; }
 			if (section === 'approle' && action === 'role') { await handleApplicationRoleInteraction(interaction); return true; }
 			if (section === 'bumpreminders' && action === 'role') {
-				const roleId = interaction.values[0];
+				const roleId = interaction.values[0] || null;
 				setBumpReminders(interaction.guildId, { ...getSettings(interaction.guildId).bumpReminders, bumperRoleId: roleId });
 				await handleMenu(interaction, 'bumpreminders');
+				return true;
+			}
+			if (section === 'birthdays' && action === 'role') {
+				const roleId = interaction.values[0] || null;
+				setBirthdays(interaction.guildId, { ...getSettings(interaction.guildId).birthdays, roleId });
+				await handleMenu(interaction, 'birthdays');
 				return true;
 			}
 		}

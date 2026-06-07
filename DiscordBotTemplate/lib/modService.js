@@ -3,7 +3,7 @@ const { getSettings } = require('./guildSettings');
 
 async function logModAction(guild, { action, moderator, target, reason, extra }) {
 	const settings = getSettings(guild.id);
-	const channelId = settings.channels?.modlog;
+	const channelId = settings.moderation?.logChannelId || settings.channels?.modlog;
 	if (!channelId) return;
 	const channel = guild.channels.cache.get(channelId) || await guild.channels.fetch(channelId).catch(() => null);
 	if (!channel?.isTextBased()) return;

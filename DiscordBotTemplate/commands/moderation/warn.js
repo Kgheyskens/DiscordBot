@@ -9,7 +9,7 @@ async function checkAutoAction(guild, member, warnCount, settings) {
 		banAt: 7,
 	};
 
-	const logChannelId = settings.moderation?.logChannelId;
+	const logChannelId = settings.moderation?.logChannelId || settings.channels?.modlog;
 	const logChannel = logChannelId ? await guild.channels.fetch(logChannelId).catch(() => null) : null;
 
 	if (warnCount >= escalation.banAt) {
@@ -84,7 +84,7 @@ module.exports = {
 			);
 
 		// Post to modlog
-		const logChannelId = settings.moderation?.logChannelId;
+		const logChannelId = settings.moderation?.logChannelId || settings.channels?.modlog;
 		if (logChannelId) {
 			const logChannel = await interaction.guild.channels.fetch(logChannelId).catch(() => null);
 			if (logChannel) {

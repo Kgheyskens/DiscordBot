@@ -35,6 +35,14 @@ function shouldPostBumpReminder(guildId) {
 	return Date.now() >= guild.nextReminderAt;
 }
 
+function markReminderSent(guildId) {
+	const all = readBumpTimers();
+	const guild = all[guildId] || {};
+	guild.nextReminderAt = null;
+	all[guildId] = guild;
+	writeBumpTimers(all);
+}
+
 function setBumpReminderRole(guildId, roleId) {
 	const all = readBumpTimers();
 	const guild = all[guildId] || {};
@@ -57,6 +65,7 @@ module.exports = {
 	logBump,
 	getLastBumpTime,
 	shouldPostBumpReminder,
+	markReminderSent,
 	setBumpReminderRole,
 	getBumpReminderRole,
 	getNextBumpReminderTime,

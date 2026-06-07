@@ -43,6 +43,7 @@ const { getSettings } = require('./lib/guildSettings');
 const { checkCommandAllowed } = require('./lib/commandRestrictions');
 const { migrateGuildConfigs } = require('./lib/migrateConfigs');
 const setupWizard = require('./lib/setupWizard');
+const shopMenu = require('./lib/shopMenu');
 const roleCategoryService = require('./lib/roleCategoryService');
 const minigameService = require('./lib/minigameService');
 const wordList = require('./lib/wordList');
@@ -83,7 +84,6 @@ const crownsClaimsFile = path.join(__dirname, 'data', 'crownsClaims.json');
 const blackjackGamesFile = path.join(__dirname, 'data', 'blackjackGames.json');
 const ticketPanelsFile = path.join(__dirname, 'data', 'ticketPanels.json');
 const minigamesFile = path.join(__dirname, 'data', 'minigames.json');
-const countingSavesFile = path.join(__dirname, 'data', 'countingSaves.json');
 const levelCooldownMs = 60_000;
 const xpPerMessageMin = 15;
 const xpPerMessageMax = 25;
@@ -209,23 +209,7 @@ function getGuildConfig(filePath, guildId, fallback = {}) {
 	return allConfigs[guildId] || fallback;
 }
 
-function getCountingSaves(guildId, userId) {
-	const all = readJson(countingSavesFile, {});
-	return all[guildId]?.[userId] || 0;
-}
-
-function setCountingSaves(guildId, userId, amount) {
-	const all = readJson(countingSavesFile, {});
-	const guildSaves = all[guildId] || {};
-	guildSaves[userId] = Math.max(0, amount);
-	all[guildId] = guildSaves;
-	writeJson(countingSavesFile, all);
-	return guildSaves[userId];
-}
-
-function addCountingSaves(guildId, userId, amount) {
-	return setCountingSaves(guildId, userId, getCountingSaves(guildId, userId) + amount);
-}
+const { getCountingSaves, setCountingSaves } = require('./lib/countingSavesService');
 
 async function handleCountingMessage(message) {
 	const settings = getSettings(message.guild.id);
@@ -274,7 +258,7 @@ async function handleCountingMessage(message) {
 			: `typte **${guessedNumber}** in plaats van **${nextNumber}**`;
 		const saveCost = settings.counting?.saveCost ?? 50;
 		await message.channel.send({
-			content: `❌ <@${message.author.id}> heeft het verpest (${reason}). Het volgende getal is **1**.\nTip: koop saves voor ${saveCost} kroontjes met \`/crownshop buysave\` zodat een fout automatisch opgevangen wordt.`,
+			content: `❌ <@${message.author.id}> heeft het verpest (${reason}). Het volgende getal is **1**.\nTip: koop saves voor ${saveCost} kroontjes via \`/crownshop\` zodat een fout automatisch opgevangen wordt.`,
 		}).catch(() => null);
 		return true;
 	}
@@ -594,21 +578,43 @@ async function checkSchedules() {
 				}
 			}
 
-			// NEW: Check birthdays (daily at UTC midnight)
-			if (settings.birthdays?.enabled && settings.channels?.modlog) {
-				const birthdayChannelId = settings.birthdays.notificationChannelId || settings.channels.modlog;
-				const channel = await guild.channels.fetch(birthdayChannelId).catch(() => null);
-				if (channel) {
+			// NEW: Check birthdays (once per day per guild)
+			if (settings.birthdays?.enabled) {
+				const birthdayStateFile = path.join(__dirname, 'data', 'birthdayState.json');
+				const bdState = readJson(birthdayStateFile, {});
+				const guildState = bdState[guild.id] || {};
+
+				if (guildState.lastProcessedDate !== todayDate) {
+					const birthdayChannelId = settings.birthdays.notificationChannelId || settings.channels?.modlog;
+					const channel = birthdayChannelId ? await guild.channels.fetch(birthdayChannelId).catch(() => null) : null;
+					const birthdayRoleId = settings.birthdays.roleId || null;
 					const birthdayUsers = birthdayService.getTodaysBirthdays(guild.id);
+
+					// Verjaardagsrol van gisteren weer afnemen
+					for (const userId of guildState.roleGivenTo || []) {
+						if (birthdayRoleId && !birthdayUsers.includes(userId)) {
+							const member = await guild.members.fetch(userId).catch(() => null);
+							await member?.roles.remove(birthdayRoleId).catch(err => {
+								console.error(`Failed to remove birthday role from ${userId}:`, err.message);
+							});
+						}
+					}
+
+					const roleGivenTo = [];
 					for (const userId of birthdayUsers) {
 						try {
 							const member = await guild.members.fetch(userId).catch(() => null);
 							if (member) {
-								const message = settings.birthdays.message || 'Happy Birthday {user}! 🎉';
-								const finalMessage = message.replace('{user}', member.toString());
-								await channel.send(finalMessage);
-
-								// Award birthday bonus coins
+								if (channel) {
+									const message = settings.birthdays.message || 'Happy Birthday {user}! 🎉';
+									await channel.send(message.replace('{user}', member.toString()));
+								}
+								if (birthdayRoleId) {
+									await member.roles.add(birthdayRoleId).catch(err => {
+										console.error(`Failed to add birthday role to ${userId}:`, err.message);
+									});
+									roleGivenTo.push(userId);
+								}
 								const bonus = settings.birthdays.bonusCoins || 100;
 								addCoinBalance(coinsFile, guild.id, userId, bonus);
 							}
@@ -616,30 +622,34 @@ async function checkSchedules() {
 							console.error(`Failed to process birthday for ${userId}:`, birthdayErr);
 						}
 					}
+
+					bdState[guild.id] = { lastProcessedDate: todayDate, roleGivenTo };
+					writeJson(birthdayStateFile, bdState);
 				}
 			}
 
 			// NEW: Check bump reminders
-			if (settings.bumpReminders?.enabled && settings.channels?.modlog) {
-				const bumpChannelId = settings.bumpReminders.bumpChannelId || settings.channels.modlog;
-				const channel = await guild.channels.fetch(bumpChannelId).catch(() => null);
+			if (settings.bumpReminders?.enabled) {
+				const bumpChannelId = settings.bumpReminders.bumpChannelId || settings.channels?.modlog;
+				const channel = bumpChannelId ? await guild.channels.fetch(bumpChannelId).catch(() => null) : null;
 				if (channel && bumpService.shouldPostBumpReminder(guild.id)) {
-					const roleId = bumpService.getBumpReminderRole(guild.id);
-					const roleTag = roleId ? `<@&${roleId}>` : '@everyone';
+					const roleId = settings.bumpReminders.bumperRoleId || bumpService.getBumpReminderRole(guild.id);
+					const roleTag = roleId ? `<@&${roleId}>` : '';
 					const lastBump = bumpService.getLastBumpTime(guild.id);
-					const nextReminder = bumpService.getNextBumpReminderTime(guild.id);
 
-					let embed = new EmbedBuilder()
+					const embed = new EmbedBuilder()
 						.setTitle('🚀 Bump Reminder')
-						.setDescription(`${roleTag} - Time to bump the server!`)
+						.setDescription('Time to bump the server! `/bump`')
 						.setColor(0x00ff00);
 
 					if (lastBump) {
-						const bumpDate = new Date(lastBump);
-						embed.addFields({ name: 'Last Bump', value: bumpDate.toLocaleString(), inline: false });
+						embed.addFields({ name: 'Last Bump', value: new Date(lastBump).toLocaleString(), inline: false });
 					}
 
-					await channel.send({ content: roleTag, embeds: [embed] });
+					await channel.send({ content: roleTag || undefined, embeds: [embed] }).catch(err => {
+						console.error(`Failed to send bump reminder in ${guild.id}:`, err.message);
+					});
+					bumpService.markReminderSent(guild.id);
 				}
 			}
 		}
@@ -1176,6 +1186,11 @@ client.on(Events.InteractionCreate, async interaction => {
 		if (isWizardCandidate) {
 			await setupWizard.dispatch(interaction);
 			return;
+		}
+
+		if (interaction.customId && (interaction.customId.startsWith('shop:') || interaction.customId.startsWith('crownshop:'))) {
+			const handled = await shopMenu.dispatch(interaction);
+			if (handled) return;
 		}
 
 		if (interaction.isButton()) {
