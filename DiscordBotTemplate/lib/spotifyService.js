@@ -104,11 +104,35 @@ async function getTracks(url) {
 	if (!parsed) {
 		throw new Error('Geen geldige Spotify-link.');
 	}
-	const token = await getAccessToken();
-	if (parsed.type === 'track') return fetchTrack(parsed.id, token);
-	if (parsed.type === 'playlist') return fetchPlaylist(parsed.id, token);
-	if (parsed.type === 'album') return fetchAlbum(parsed.id, token);
-	return [];
+
+	let token;
+	try {
+		token = await getAccessToken();
+	} catch (err) {
+		const status = err.response?.status;
+		console.error('Spotify token ophalen mislukt:', status, err.response?.data || err.message);
+		throw new Error('Spotify-login mislukt — controleer of SPOTIFY_CLIENT_ID en SPOTIFY_CLIENT_SECRET kloppen.');
+	}
+
+	try {
+		if (parsed.type === 'track') return await fetchTrack(parsed.id, token);
+		if (parsed.type === 'playlist') return await fetchPlaylist(parsed.id, token);
+		if (parsed.type === 'album') return await fetchAlbum(parsed.id, token);
+		return [];
+	} catch (err) {
+		const status = err.response?.status;
+		console.error(`Spotify ${parsed.type} ophalen mislukt (${parsed.id}):`, status, err.response?.data || err.message);
+		if (status === 404) {
+			throw new Error('Deze Spotify-link bestaat niet of is privé. Zet de playlist op openbaar.');
+		}
+		if (status === 403) {
+			throw new Error('Spotify weigert deze playlist. Spotify-eigen/algoritmische playlists (zoals "Discover Weekly", "Top 50" of editorial mixes) zijn geblokkeerd voor apps. Gebruik een playlist die door een gebruiker is gemaakt.');
+		}
+		if (status === 401) {
+			throw new Error('Spotify-token afgewezen — controleer je SPOTIFY_CLIENT_SECRET.');
+		}
+		throw new Error(`Spotify-fout (${status || '?'}). Probeer een andere playlist.`);
+	}
 }
 
 module.exports = {

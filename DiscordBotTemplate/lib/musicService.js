@@ -80,6 +80,13 @@ async function joinChannel(voiceChannel, textChannel) {
 
 	connection.subscribe(player);
 
+	connection.on('stateChange', (oldState, newState) => {
+		console.log(`[voice ${guildId}] ${oldState.status} -> ${newState.status}`);
+	});
+	connection.on('error', err => {
+		console.error(`[voice ${guildId}] connection error:`, err.message);
+	});
+
 	state.connection = connection;
 	state.player = player;
 	state.voiceChannelId = voiceChannel.id;
