@@ -92,7 +92,7 @@ const ENABLE_PRIVILEGED_INTENTS = process.env.ENABLE_PRIVILEGED_INTENTS === 'tru
 
 const BOT_TOKEN = process.env.CLIENT_TOKEN;
 
-const clientIntents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.GuildModeration];
+const clientIntents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildVoiceStates];
 
 if (ENABLE_PRIVILEGED_INTENTS) {
 	clientIntents.push(GatewayIntentBits.GuildMembers, GatewayIntentBits.MessageContent);
